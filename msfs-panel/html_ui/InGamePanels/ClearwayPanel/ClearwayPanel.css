@@ -731,8 +731,8 @@ textarea.cw-input { resize: none; overflow-y: hidden; line-height: 1.35em; min-h
 .cw-clock.tsat.late { color: #ff6b6b; }   /* after TSAT +5 min */
 .cw-clock.tsat { font-weight: bold; }
 /* start-up window open (TSAT -5 to +5 min), not seen yet: electric yellow-green icon */
-#cw-bubble.alert-tsat { background-color: #c6ff1a; border-color: #eaff8a; box-shadow: 0 0 1.1em rgba(198, 255, 26, 0.55); opacity: 1; }
-#cw-bubble.alert-tsat .cw-glyph { fill: #1c2600; }
+#cw-bubble.alert-tsat { background-color: #86efac; border-color: #bbf7d0; box-shadow: 0 0 1.1em rgba(134, 239, 172, 0.55); opacity: 1; }
+#cw-bubble.alert-tsat .cw-glyph { fill: #052e16; }
 
 /* ---------------- 1.2.0 ---------------- */
 /* Clearway (the app on the PC) not running: a faint red icon, ahead of the yellow "not on VATSIM" */
@@ -744,8 +744,8 @@ textarea.cw-input { resize: none; overflow-y: hidden; line-height: 1.35em; min-h
    Yellow-green, retracting counterclockwise as the window runs out; electric orange once it has expired */
 .cw-tring { display: none; position: absolute; left: -0.14em; top: -0.14em; width: 3.4em; height: 3.4em; overflow: visible; }
 .cw-tring circle { fill: none; stroke-width: 4.2; }
-.cw-tring-track { stroke: rgba(198, 255, 26, 0.18); }
-.cw-tring-arc { stroke: #c6ff1a; stroke-linecap: round; }
+.cw-tring-track { stroke: rgba(134, 239, 172, 0.18); }
+.cw-tring-arc { stroke: #86efac; stroke-linecap: round; }
 #cw-bubble.tsat-ring .cw-tring, #cw-bubble.tsat-late .cw-tring { display: block; }
 canvas.cw-tring { pointer-events: none; }
 #cw-bubble.tsat-ring, #cw-bubble.tsat-late { border-color: transparent; }
@@ -800,7 +800,9 @@ canvas.cw-tring { pointer-events: none; }
 #cw-pane-vpilot > .cw-list, #cw-pane-cpdlc > .cw-list { flex: 1 1 auto; }
 #cw-pane-selcal { overflow-y: auto; }
 #cw-pane-radar { display: flex; flex-direction: column; }
-#cw-radar-dock { flex: none; height: 24.6em; }
+/* the radar fills the card's shared height; expanded (.radar) it has its own, larger fixed size */
+#cw-radar-dock { flex: 1 1 auto; height: auto; min-height: 0; }
+#cw-card.radar #cw-radar-dock { flex: none; height: 24.6em; }
 #cw-notes { display: flex; flex-direction: column; }
 #cw-notes .cw-notes { flex: 1 1 auto; height: auto; min-height: 0; }
 /* scrollbars drawn by the panel (MSFS shows none): a thin track on the right of each scrolling area, thumb to drag */
@@ -809,21 +811,40 @@ canvas.cw-tring { pointer-events: none; }
 .cw-sthumb { position: absolute; left: 0.1em; right: 0.1em; border-radius: 0.25em; background-color: var(--muted); opacity: 0.55; }
 .cw-sbar:hover .cw-sthumb { opacity: 0.9; }
 #cw-root.light .cw-sbar { background-color: rgba(0, 0, 0, 0.06); }
-/* Card and peek at 95% opacity: only their background colours are see-through (text and buttons stay solid), so the
-   sim shows very faintly behind them. Inner boxes are tints over the card's background, so they don't stack up into
+/* Card and peek at 75% opacity (glass, like //42 Flow): only their background colours are see-through (text and buttons
+   stay solid), so the sim shows behind them. Inner boxes are tints over the card's background, so they don't stack up into
    solid patches. Not on the Radar tab (.radar), where the map stays fully opaque */
-#cw-card { --bg: rgba(5, 14, 23, 0.95); --surface: rgba(40, 70, 110, 0.17); --surface-2: rgba(40, 70, 110, 0.39);
+#cw-card { --bg: rgba(5, 14, 23, 0.75); --surface: rgba(40, 70, 110, 0.17); --surface-2: rgba(40, 70, 110, 0.39);
   --unread: rgba(160, 115, 40, 0.2); }
-#cw-root.black #cw-card { --bg: rgba(0, 0, 0, 0.95); --surface: rgba(255, 255, 255, 0.055); --surface-2: rgba(255, 255, 255, 0.1);
+#cw-root.black #cw-card { --bg: rgba(0, 0, 0, 0.75); --surface: rgba(255, 255, 255, 0.055); --surface-2: rgba(255, 255, 255, 0.1);
   --unread: rgba(160, 115, 40, 0.2); }
-#cw-root.light #cw-card { --bg: rgba(247, 248, 251, 0.95); --surface: rgba(255, 255, 255, 0.6); --surface-2: rgba(120, 130, 170, 0.1);
+#cw-root.light #cw-card { --bg: rgba(247, 248, 251, 0.75); --surface: rgba(255, 255, 255, 0.6); --surface-2: rgba(120, 130, 170, 0.1);
   --unread: rgba(255, 200, 100, 0.12); }
 /* Radar tab: the theme's solid colours back (no :not() selector, which MSFS may not support) */
-#cw-card.radar { --bg: #050e17; --surface: #0b1826; --surface-2: #142336; --unread: #241f17; }
-#cw-root.black #cw-card.radar { --bg: #000000; --surface: #0e0e0e; --surface-2: #1a1a1a; --unread: #1f1a12; }
-#cw-root.light #cw-card.radar { --bg: #f7f8fb; --surface: #ffffff; --surface-2: #eef0f6; --unread: #fff7e8; }
-#cw-peek { background-color: rgba(11, 24, 38, 0.95); }
-#cw-root.black #cw-peek { background-color: rgba(14, 14, 14, 0.95); }
-#cw-root.light #cw-peek { background-color: rgba(255, 255, 255, 0.95); }
+#cw-card.radar-tab { --bg: #050e17; --surface: #0b1826; --surface-2: #142336; --unread: #241f17; }
+#cw-root.black #cw-card.radar-tab { --bg: #000000; --surface: #0e0e0e; --surface-2: #1a1a1a; --unread: #1f1a12; }
+#cw-root.light #cw-card.radar-tab { --bg: #f7f8fb; --surface: #ffffff; --surface-2: #eef0f6; --unread: #fff7e8; }
+#cw-peek { background-color: rgba(11, 24, 38, 0.75); }
+#cw-root.black #cw-peek { background-color: rgba(14, 14, 14, 0.75); }
+#cw-root.light #cw-peek { background-color: rgba(255, 255, 255, 0.75); }
+/* one clean edge: no shadow (it read as a double border with the old navy line), just a faint white rim at 20%
+   like //42 Flow's glass. Light theme: a faint dark rim instead, white would vanish on it */
+#cw-card, #cw-radar-win { border-color: rgba(255, 255, 255, 0.2); box-shadow: none; }
+#cw-peek { border-top-color: rgba(255, 255, 255, 0.2); border-right-color: rgba(255, 255, 255, 0.2);
+  border-bottom-color: rgba(255, 255, 255, 0.2); box-shadow: none; }
+#cw-root.light #cw-card, #cw-root.light #cw-radar-win { border-color: rgba(30, 40, 70, 0.14); }
+#cw-root.light #cw-peek { border-top-color: rgba(30, 40, 70, 0.14); border-right-color: rgba(30, 40, 70, 0.14);
+  border-bottom-color: rgba(30, 40, 70, 0.14); }
+/* start-up window open: the full mint-green icon wins over the navy-blue "online" colours above */
+#cw-bubble.alert-tsat, #cw-bubble.online.alert-tsat { background-color: #86efac; border-color: #bbf7d0; }
+#cw-bubble.alert-tsat .cw-glyph, #cw-bubble.online.alert-tsat .cw-glyph { fill: #052e16; }
+/* the start-up window peek: its label in the same mint green */
+#cw-peek.tsat { border-left-color: #86efac; }
+#cw-peek.tsat .cw-peek-kind { background-color: rgba(134, 239, 172, 0.16); color: #86efac; }
+#cw-peek .cw-peek-big { font-size: 1.6em; font-weight: bold; color: #86efac; margin-top: 0.15em; }
+/* "Close vPilot?" under the vPilot bar, after clicking the green power button */
+.cw-vp-ask { display: flex; align-items: center; padding: 0.45em 0.8em; background-color: var(--rose-soft);
+  border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.cw-vp-ask-text { flex-grow: 1; font-size: 0.9em; font-weight: bold; color: var(--text); }
 /* the browser's own scrollbar (when testing outside the sim) would double up with these */
 #cw-card ::-webkit-scrollbar { width: 0; height: 0; }

@@ -1154,6 +1154,11 @@
     el("detach").className = "";
     el("detach").onclick = function () { o.onDetach(); };
   }
+  // Expand button: Clearway switches the radar between its compact size and the big one (card or window)
+  if (o.onExpand) {
+    el("expand").className = "";
+    el("expand").onclick = function () { o.onExpand(); };
+  }
   if (ui) {
     ui.addEventListener("panelActive", function () { panelActive = true; checkVisible(); });
     ui.addEventListener("panelInactive", function () { panelActive = false; checkVisible(); });
@@ -1340,6 +1345,7 @@
     '</div>' +
     '<div id="rd-topright">' +
       '<div id="rd-status">connecting...</div>' +
+      '<div id="rd-expand" class="hidden" title="Bigger radar"><i class="a"></i><i class="b"></i></div>' +
       '<div id="rd-detach" class="hidden" title="Open the radar in its own window"><i class="box"></i><i class="out"></i></div>' +
     '</div>' +
     '<div id="rd-card" class="hidden"></div>' +

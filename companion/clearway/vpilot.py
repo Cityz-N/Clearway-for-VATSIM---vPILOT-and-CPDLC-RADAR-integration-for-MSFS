@@ -94,6 +94,24 @@ class VpilotMixin:
         threading.Timer(3, self.vpilot_proc_wake.set).start()   # green as soon as it's up
         return ""
 
+    def vpilot_close(self) -> str:
+        """Close vPilot like clicking its X (it disconnects and shuts down normally). Returns '' or a reason."""
+        import os
+        from clearway.procs import close_windows
+        if not self.vpilot_running and not self.vpilot_active():
+            return "vPilot isn't open"
+        try:
+            asked = close_windows(os.environ.get("CLEARWAY_VPILOT_EXE", "vPilot.exe"))
+        except OSError as exc:
+            log.warning("Couldn't close vPilot: %s", exc)
+            asked = 0
+        if not asked:
+            return "Couldn't close vPilot: close it yourself"
+        log.info("vPilot asked to close from the panel")
+        for delay in (2, 5):                                      # red as soon as it's gone
+            threading.Timer(delay, self.vpilot_proc_wake.set).start()
+        return ""
+
     # ------------------------------------------------------------ plugin side
     def vpilot_active(self) -> bool:
         return time.time() - self.vpilot_seen < VPILOT_TIMEOUT

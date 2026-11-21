@@ -161,6 +161,33 @@ def _minimize_when_shown(exe: str, wait: float = 30) -> None:
             return
 
 
+def close_windows(exe: str) -> int:
+    """Ask a program to close, like clicking its X: WM_CLOSE to its main windows (never a forced kill, so it can
+    shut down normally, e.g. vPilot disconnects first). Returns how many windows were asked."""
+    u32 = ctypes.WinDLL("user32", use_last_error=True)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    procs = _pids(k32, exe)
+    if not procs:
+        return 0
+    enum_proc = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    u32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+    u32.GetWindow.argtypes = [wt.HWND, wt.UINT]
+    u32.GetWindow.restype = wt.HWND
+    u32.IsWindowVisible.argtypes = [wt.HWND]
+    u32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+    asked = []
+
+    def each(hwnd, _):
+        pid = wt.DWORD()
+        u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in procs and u32.IsWindowVisible(hwnd) and not u32.GetWindow(hwnd, 4):   # main windows only
+            if u32.PostMessageW(hwnd, 0x0010, 0, 0):                                         # WM_CLOSE
+                asked.append(hwnd)
+        return True
+    u32.EnumWindows(enum_proc(each), 0)
+    return len(asked)
+
+
 def _pids(k32, exe: str) -> set:
     k32.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
     k32.CreateToolhelp32Snapshot.restype = wt.HANDLE

@@ -2,12 +2,16 @@
 
 ## 1.3.0
 
-- MSFS panel: the card has the same height on every tab (vPilot, CPDLC, SELCAL and the notepad), so switching tabs doesn't make it jump. It starts small and grows with your vPilot and CPDLC messages, up to the height of the vPilot tab with six controllers in the ATC list, and every tab follows; past that, lists scroll inside. The Radar tab keeps its own fixed size
+- MSFS panel: the card has the same height on every tab (vPilot, CPDLC, SELCAL and the notepad), so switching tabs doesn't make it jump. It starts small and grows with your vPilot and CPDLC messages, up to the height of the vPilot tab with six controllers in the ATC list, and every tab follows (the Radar too); past that, lists scroll inside
+- Radar: a new **expand** button next to the detach button switches between the compact radar (the card's size) and the big one (twice as wide, taller), remembered. In its own window it switches the window between a card-sized and the big size (the corner grip still resizes it freely)
 - MSFS panel: the SELCAL generator (callsign, codes, Generate / Save / Use in vPilot) folds away under a **Generate** header, like CPDLC's Request, closed when the panel starts. Checking a code stays visible; SimBrief opens the generator
-- MSFS panel: the card and the peek are 95% opaque: the sim shows very faintly through their background, text and buttons stay solid. The Radar tab stays fully opaque
+- MSFS panel: a glass look for the card and the peek: 75% opaque backgrounds, so the sim shows through while text and buttons stay solid, and a faint white rim instead of the outline and shadow. The Radar tab stays fully opaque
 - Radar: the info card of an aircraft, controller or airport shows its close button (×) at the top right; the frequency or callsign used to cover it
 - MSFS panel: the mouse wheel over the card, the peek, the radar window or the icon is kept by the panel (it scrolls the list under the mouse itself), to stop it reaching the cockpit, e.g. turning a knob while the camera is moving. MSFS may still route the mouse to the cockpit while the camera moves
 - MSFS panel: the LT clock shows the real local time where your aircraft is (flying in California from Paris: California time), not your PC's time. It doesn't follow the time of day set in the sim
+- MSFS panel: the green vPilot power button now also closes vPilot, after a "Close vPilot?" confirmation (Close / Cancel, gone after 8 seconds). vPilot is asked to close like clicking its X, so it disconnects and shuts down normally. With "Quit Clearway when vPilot closes" on, Clearway quits too, as when you close vPilot yourself
+- MSFS panel: the start-up window colour is a softer mint green (#86efac) instead of the electric yellow-green, on the icon and the countdown ring
+- MSFS panel: right click the mint-green icon (start-up window open) to see "Start-up window" with a live "MM:SS left" countdown to its end (TSAT +6). Click it to open the card
 - MSFS panel: the TSAT countdown ring is the size of the icon again (in 1.2.0 it showed up far too big next to the icon in the sim)
 - TSAT clock: once your flight is activated (off blocks), the clock goes back to your usual one. Before, it kept counting up in red past the window while you taxied, until take-off
 - CPDLC: a **ROGER** button for text from ATC (panel, peek and phone). Text that needs an answer shows ROGER next to STANDBY (before, only STANDBY, so you had to type ROGER); text that needs none (e.g. "APPROVED. REPORT BACK") gets an optional ROGER, and you can still just mark it read. Logon and unit notices get none

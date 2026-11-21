@@ -327,8 +327,11 @@
     el("cw-pane-cpdlc").classList.toggle("hidden", t !== "cpdlc" || notesOpen);
     el("cw-pane-selcal").classList.toggle("hidden", t !== "selcal" || notesOpen);
     el("cw-pane-radar").classList.toggle("hidden", t !== "radar" || notesOpen);
-    // Radar tab: twice as wide, unless the radar is in its own window (then a short note is shown)
-    el("cw-card").classList.toggle("radar", t === "radar" && !notesOpen && !radarDetached);
+    // Radar tab: the card's shared size, or twice as wide and taller when expanded (.radar); in its own window
+    // a short note is shown instead. .radar-tab keeps the Radar tab opaque either way
+    var radarHere = t === "radar" && !notesOpen && !radarDetached;
+    el("cw-card").classList.toggle("radar", radarHere && radarBig);
+    el("cw-card").classList.toggle("radar-tab", radarHere);
     el("cw-notes").classList.toggle("hidden", !notesOpen);
     el("cw-notes-btn").classList.toggle("on", notesOpen);
     lastChatKey = "";
@@ -401,7 +404,8 @@
     // vPilot start button: red while vPilot is closed (click starts it in the background), green once it's open
     var run = el("cw-vp-run"), open = vp.running === true;
     run.className = "cw-mini cw-vp-run" + (!reachable || vp.running == null ? " hidden" : open ? " open" : vp.starting ? " starting" : "");
-    run.title = open ? "vPilot is open" : vp.starting ? "vPilot is starting..." : "vPilot is closed: click to start it in the background";
+    run.title = open ? "vPilot is open: click to close it" : vp.starting ? "vPilot is starting..." : "vPilot is closed: click to start it in the background";
+    if (!open && !el("cw-vp-close-ask").classList.contains("hidden")) el("cw-vp-close-ask").classList.add("hidden");   // already gone
     // Mode C / standby / ident asked from anywhere (phone, dot command, these buttons): set the aircraft's
     // transponder in the sim too, since vPilot follows it. The first state seen is only remembered.
     if (typeof vp.modec_n === "number") {
@@ -1214,6 +1218,7 @@
     if (now - lastPeekAt < 350) return;      // mousedown + contextmenu fire for the same click
     lastPeekAt = now;
     if (!state || !reachable) return;
+    if (tsatAlertOn) return showTsatPeek();   // icon in mint green: the start-up window and its countdown instead
     var msgs = state.messages.filter(peekable), vp = null, cp = null, last = null;
     for (var i = msgs.length - 1; i >= 0; i--) {
       var m = msgs[i];
@@ -1233,6 +1238,32 @@
       act("unack", { id: last.id }, null);
       showPeek(last, true);
     }
+  }
+
+  // Right click on the icon while it's mint green (start-up window open): "Start-up window" and a live countdown to
+  // its end (TSAT +6), ticking every second while it's shown. A click on it opens the card
+  var tsatPeekTimer = null;
+  function showTsatPeek() {
+    var t = tsatNow(), p = el("cw-peek");
+    if (!t) return;
+    peekMsg = null;
+    p.className = "tsat";
+    function draw() {
+      var s = Math.max(0, Math.floor((t.tsat_ms + 360000 - Date.now()) / 1000));
+      p.innerHTML = "<div class=\"cw-peek-head\"><span class=\"cw-peek-kind\">TSAT</span>" +
+        "<span class=\"cw-station\">" + esc(t.airport || "") + "</span>" +
+        "<span class=\"cw-time\">" + (t.suggested ? "TOBT " + esc(t.tobt) : "TSAT " + esc(t.tsat)) + "z</span></div>" +
+        "<div class=\"cw-peek-text\">Start-up window</div>" +
+        "<div class=\"cw-peek-big\">" + pad2(Math.floor(s / 60)) + ":" + pad2(s % 60) + " left</div>";
+    }
+    draw();
+    clearInterval(tsatPeekTimer);
+    tsatPeekTimer = setInterval(function () {
+      if (p.classList.contains("hidden") || !p.classList.contains("tsat")) { clearInterval(tsatPeekTimer); return; }
+      draw();
+    }, 1000);
+    placePeek();
+    armPeekClose(PEEK_MS);
   }
 
   function showPeek(m, markedUnread) {
@@ -1354,6 +1385,7 @@
   }
 
   function onPeekClick(e) {
+    if (el("cw-peek").classList.contains("tsat")) { hidePeek(); if (!expanded) setExpanded(true); return; }
     var r = pick(e.target, "data-peek-reply");
     if (!r) return openPeeked();
     var m = peekMsg;
@@ -1421,9 +1453,34 @@
   // the dock button (or "Put it back here" in the tab) returns it. The radar pauses by itself whenever it
   // is not visible (other tab, card closed), so nothing is downloaded or drawn then.
   var radarDetached = false;
+  // compact (the card's size, like the other tabs) or big (the expand button: twice as wide and taller), remembered
+  var radarBig = !!load("CLEARWAY_RADAR_BIG", false);
+  function toggleRadarBig() {
+    radarBig = !radarBig;
+    save("CLEARWAY_RADAR_BIG", radarBig);
+    applyRadarBig(true);
+  }
+  function applyRadarBig(resizeWindow) {
+    var r = document.getElementById("rd-radar"), x = document.getElementById("rd-expand");
+    if (r) r.classList.toggle("big", radarBig);
+    if (x) x.title = radarBig ? "Smaller radar" : "Bigger radar";
+    if (radarDetached && resizeWindow) {
+      // the window jumps to the matching size; it can still be resized freely with its corner grip
+      var w = el("cw-radar-win"), em = parseFloat(window.getComputedStyle(w).fontSize) || 14;
+      var ww = (radarBig ? 53.2 : 25.8) * em, wh = (radarBig ? 26.9 : CARD_MAX * 0.8) * em;
+      ww = Math.min(window.innerWidth - 8, ww); wh = Math.min(window.innerHeight - 8, wh);
+      w.style.width = ww + "px"; w.style.height = wh + "px";
+      w.style.left = Math.max(4, Math.min(window.innerWidth - ww - 4, w.offsetLeft)) + "px";
+      w.style.top = Math.max(4, Math.min(window.innerHeight - wh - 4, w.offsetTop)) + "px";
+      saveRadarWindow();
+    }
+    showTab(tab);
+  }
   function startRadar() {
     if (typeof ClearwayRadar === "undefined") return;
-    ClearwayRadar.mount({ api: API, container: el("cw-radar-dock"), capture: el("cw-capture"), onDetach: toggleRadarWindow });
+    ClearwayRadar.mount({ api: API, container: el("cw-radar-dock"), capture: el("cw-capture"), onDetach: toggleRadarWindow,
+                         onExpand: toggleRadarBig });
+    applyRadarBig(false);
     var w = el("cw-radar-win");
     makeWindowDraggable(el("cw-rw-head"), w);
     makeWindowResizable(el("cw-rw-grip"), w);
@@ -1564,12 +1621,12 @@
     ctx.clearRect(0, 0, size, size);
     ctx.lineWidth = lw;
     if (!late) {                                   // faint track under the arc
-      ctx.strokeStyle = "rgba(198, 255, 26, 0.18)";
+      ctx.strokeStyle = "rgba(134, 239, 172, 0.18)";
       ctx.beginPath(); ctx.arc(c, c, r, 0, 2 * Math.PI); ctx.stroke();
     }
     if (left <= 0) return;
     // from 12 o'clock clockwise for what's left: the end retracts counterclockwise towards 12 as time runs out
-    ctx.strokeStyle = late ? "#ff7a00" : "#c6ff1a";
+    ctx.strokeStyle = late ? "#ff7a00" : "#86efac";
     ctx.lineCap = late ? "butt" : "round";
     ctx.beginPath(); ctx.arc(c, c, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * left); ctx.stroke();
   }
@@ -2036,12 +2093,27 @@
       placeCard();
     });
     el("cw-cw-run").addEventListener("click", startClearway);
+    // vPilot power button: starts vPilot when it's closed; while it's open, asks first, then closes it like its X
+    var closeAskTimer = null;
+    function askCloseVpilot(show) {
+      clearTimeout(closeAskTimer);
+      var vp = (state && state.vpilot) || {};
+      el("cw-vp-close-text").textContent = vp.connected ? "Close vPilot? You'll be disconnected from VATSIM." : "Close vPilot?";
+      el("cw-vp-close-ask").classList.toggle("hidden", !show);
+      if (show) closeAskTimer = setTimeout(function () { askCloseVpilot(false); placeCard(); }, 8000);   // not answered: gone
+      placeCard();
+    }
     el("cw-vp-run").addEventListener("click", function () {
       var vp = (state && state.vpilot) || {};
-      if (vp.running) return hint("vPilot is open.", false, "cw-vp-hint");
+      if (vp.running) return askCloseVpilot(el("cw-vp-close-ask").classList.contains("hidden"));
       if (vp.starting) return hint("vPilot is starting...", false, "cw-vp-hint");
       act("vp/launch", {}, "Starting vPilot in the background...", "cw-vp-hint");
     });
+    el("cw-vp-close-yes").addEventListener("click", function () {
+      askCloseVpilot(false);
+      act("vp/close", {}, "Closing vPilot...", "cw-vp-hint");
+    });
+    el("cw-vp-close-no").addEventListener("click", function () { askCloseVpilot(false); });
     el("cw-vp-sb-ref").addEventListener("click", vpSimbriefRefresh);
     el("cw-vp-sb").addEventListener("click", function () {   // click the SimBrief callsign to use it
       var ofp = state && state.selcal && state.selcal.simbrief;

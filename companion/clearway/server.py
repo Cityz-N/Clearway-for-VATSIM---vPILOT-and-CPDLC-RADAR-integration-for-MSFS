@@ -264,6 +264,10 @@ class Handler(BaseHTTPRequestHandler):
                 err = s.vpilot_launch()
                 if err:
                     return self._json({"ok": False, "error": err}, 409)
+            elif action == "vp/close":             # the same button while vPilot is open (after a confirmation)
+                err = s.vpilot_close()
+                if err:
+                    return self._json({"ok": False, "error": err}, 409)
             elif action == "vp/modec":
                 s.vpilot_modec(bool(body.get("on", True)))
             elif action == "vp/ident":
