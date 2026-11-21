@@ -1119,7 +1119,10 @@
     var btnFont = 12 * SIZES["1440p"];
     el("tools").style.fontSize = btnFont + "px";
     el("topright").style.fontSize = btnFont + "px";
-    el("credit").style.fontSize = (btnFont * 0.75) + "px";   // the map credits too (12 px, the 1440p size)
+    // the map credits too (12 px, the 1440p size); on a narrow (compact) radar a shorter line, in smaller text
+    var narrowRadar = r.width < btnFont * 46;
+    el("radar").classList.toggle("narrow", narrowRadar);
+    el("credit").style.fontSize = (btnFont * (narrowRadar ? 0.62 : 0.75)) + "px";
     var need = el("tools").offsetTop + el("tools").offsetHeight, avail = r.height - 4;
     if (need > avail && avail > 40) {                    // a small window: shrink the button column to fit
       btnFont = Math.max(6, btnFont * avail / need);
@@ -1345,7 +1348,9 @@
     '</div>' +
     '<div id="rd-topright">' +
       '<div id="rd-status">connecting...</div>' +
-      '<div id="rd-expand" class="hidden" title="Bigger radar"><i class="a"></i><i class="b"></i></div>' +
+      '<div id="rd-expand" class="hidden" title="Bigger radar">' +
+        '<svg class="ex" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/></svg>' +     // arrows out
+        '<svg class="sh" viewBox="0 0 24 24"><path d="M20 4l-6 6M14 4v6h6M4 20l6-6M10 20v-6H4"/></svg></div>' +   // arrows in
       '<div id="rd-detach" class="hidden" title="Open the radar in its own window"><i class="box"></i><i class="out"></i></div>' +
     '</div>' +
     '<div id="rd-card" class="hidden"></div>' +
@@ -1354,7 +1359,8 @@
       '<div id="rd-tArr" class="tc arr" title="Arrivals: show their routes"><span id="rd-tArrN">0</span><i>ARR</i></div>' +
     '</div>' +
     '<div id="rd-perf" class="hidden"></div>' +
-    '<div id="rd-credit">Map (c) Esri, HERE, Garmin, (c) OpenStreetMap contributors | VATGlasses CC BY-NC-SA | VATSpy CC BY-SA</div>';
+    '<div id="rd-credit"><span class="full">Map (c) Esri, HERE, Garmin, (c) OpenStreetMap contributors | VATGlasses CC BY-NC-SA | VATSpy CC BY-SA</span>' +
+      '<span class="short">(c) Esri, HERE, Garmin, OpenStreetMap | VATGlasses | VATSpy</span></div>';
 
   // Clearway mounts the radar once its panel is ready; the browser test page calls mount() itself.
   var started = false;

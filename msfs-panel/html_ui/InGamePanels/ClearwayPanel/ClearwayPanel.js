@@ -243,9 +243,10 @@
     if (!h) return;
     h.textContent = plain(text || "");
     h.style.color = err ? "var(--rose)" : "var(--muted)";
+    h.classList.toggle("on", !!text);            // the vPilot one floats above the message box while it has text
     var key = id || "default";
     clearTimeout(hintTimers[key]);
-    if (text) hintTimers[key] = setTimeout(function () { h.textContent = ""; }, err ? 9000 : 4000);
+    if (text) hintTimers[key] = setTimeout(function () { h.textContent = ""; h.classList.remove("on"); }, err ? 9000 : 4000);
   }
   function attr(t, name) { return t && t.getAttribute ? t.getAttribute(name) : null; }
   function pick(t, name) { var n = t && t.closest ? t.closest("[" + name + "]") : null; return n ? n.getAttribute(name) : null; }
@@ -1218,21 +1219,25 @@
     if (now - lastPeekAt < 350) return;      // mousedown + contextmenu fire for the same click
     lastPeekAt = now;
     if (!state || !reachable) return;
-    if (tsatAlertOn) return showTsatPeek();   // icon in mint green: the start-up window and its countdown instead
-    var msgs = state.messages.filter(peekable), vp = null, cp = null, last = null;
+    // what a right click shows, in order: an unread message (for you or CPDLC), new frequency text for others (the
+    // grey dot), then during the start-up window (TSAT -5 to +6) its countdown, else the last message again
+    var msgs = state.messages.filter(peekable), vp = null, cp = null, quiet = null, last = null;
     for (var i = msgs.length - 1; i >= 0; i--) {
       var m = msgs[i];
       if (!last) last = m;
       if (!m.acked && ackPending[m.id] === undefined) {
         if (VP[m.kind]) { if (!vp) vp = m; } else if (!cp) cp = m;
-      }
+      } else if (m.quiet && !quiet && ackPending[m.id] === undefined) quiet = m;
     }
-    var target = vp || cp;
+    var target = vp || cp || quiet;
     if (target) {
       ackPending[target.id] = 1;
       target.acked = true;
+      target.quiet = false;
       act("ack", { id: target.id }, null, null, function () { delete ackPending[target.id]; });
       showPeek(target, false);
+    } else if (tsatWindowOpen()) {
+      showTsatPeek();
     } else if (last) {
       last.acked = false;
       act("unack", { id: last.id }, null);
@@ -1240,8 +1245,23 @@
     }
   }
 
-  // Right click on the icon while it's mint green (start-up window open): "Start-up window" and a live countdown to
-  // its end (TSAT +6), ticking every second while it's shown. A click on it opens the card
+  // Right click on the icon during the start-up window (TSAT -5 to +6, full green icon or countdown ring), when no
+  // message is waiting: "Start-up window" and a live countdown to its end, ticking every second while it's shown, in
+  // the countdown's colour. A click on it opens the card
+  function tsatWindowOpen() {
+    var t = tsatNow(), now = Date.now();
+    return !!t && now >= t.tsat_ms - 300000 && now < t.tsat_ms + 360000;
+  }
+  // the countdown's colour as the window runs out: mint green, then yellow, orange and red (left = 1 .. 0)
+  var WINDOW_STOPS = [[0, [239, 68, 68]], [0.2, [249, 115, 22]], [0.5, [253, 224, 71]], [1, [134, 239, 172]]];
+  function windowColor(left, alpha) {
+    left = Math.max(0, Math.min(1, left));
+    var a = WINDOW_STOPS[0], b = WINDOW_STOPS[WINDOW_STOPS.length - 1];
+    for (var i = 1; i < WINDOW_STOPS.length; i++) if (left <= WINDOW_STOPS[i][0]) { a = WINDOW_STOPS[i - 1]; b = WINDOW_STOPS[i]; break; }
+    var f = (left - a[0]) / ((b[0] - a[0]) || 1), c = [];
+    for (var k = 0; k < 3; k++) c.push(Math.round(a[1][k] + (b[1][k] - a[1][k]) * f));
+    return "rgba(" + c.join(", ") + ", " + (alpha == null ? 1 : alpha) + ")";
+  }
   var tsatPeekTimer = null;
   function showTsatPeek() {
     var t = tsatNow(), p = el("cw-peek");
@@ -1249,12 +1269,14 @@
     peekMsg = null;
     p.className = "tsat";
     function draw() {
-      var s = Math.max(0, Math.floor((t.tsat_ms + 360000 - Date.now()) / 1000));
-      p.innerHTML = "<div class=\"cw-peek-head\"><span class=\"cw-peek-kind\">TSAT</span>" +
+      var ms = t.tsat_ms + 360000 - Date.now(), s = Math.max(0, Math.floor(ms / 1000));
+      var col = windowColor(ms / 660000);
+      p.style.borderLeftColor = col;
+      p.innerHTML = "<div class=\"cw-peek-head\"><span class=\"cw-peek-kind\" style=\"color:" + col + "\">TSAT</span>" +
         "<span class=\"cw-station\">" + esc(t.airport || "") + "</span>" +
         "<span class=\"cw-time\">" + (t.suggested ? "TOBT " + esc(t.tobt) : "TSAT " + esc(t.tsat)) + "z</span></div>" +
         "<div class=\"cw-peek-text\">Start-up window</div>" +
-        "<div class=\"cw-peek-big\">" + pad2(Math.floor(s / 60)) + ":" + pad2(s % 60) + " left</div>";
+        "<div class=\"cw-peek-big\" style=\"color:" + col + "\">" + pad2(Math.floor(s / 60)) + ":" + pad2(s % 60) + " left</div>";
     }
     draw();
     clearInterval(tsatPeekTimer);
@@ -1282,6 +1304,7 @@
       foot += "<div class=\"cw-actions\">" + btns + "</div><div class=\"cw-peek-foot\" id=\"cw-peek-state\"></div>";
     }
     p.className = isVp ? "vp" : "";
+    p.style.borderLeftColor = "";                          // the start-up window peek colours it while it counts down
     p.innerHTML = "<div class=\"cw-peek-head\"><span class=\"cw-peek-kind\">" + esc(label) + "</span>" +
       "<span class=\"cw-station\">" + esc(m.station) + "</span>" +
       (m.freq ? "<span class=\"cw-freq\">" + esc(m.freq) + "&nbsp;</span>" : "") +
@@ -1621,12 +1644,13 @@
     ctx.clearRect(0, 0, size, size);
     ctx.lineWidth = lw;
     if (!late) {                                   // faint track under the arc
-      ctx.strokeStyle = "rgba(134, 239, 172, 0.18)";
+      ctx.strokeStyle = windowColor(left, 0.18);
       ctx.beginPath(); ctx.arc(c, c, r, 0, 2 * Math.PI); ctx.stroke();
     }
     if (left <= 0) return;
-    // from 12 o'clock clockwise for what's left: the end retracts counterclockwise towards 12 as time runs out
-    ctx.strokeStyle = late ? "#ff7a00" : "#86efac";
+    // from 12 o'clock clockwise for what's left: the end retracts counterclockwise towards 12 as time runs out, and its
+    // colour fades from mint green through yellow and orange to red; electric orange once the window has expired
+    ctx.strokeStyle = late ? "#ff7a00" : windowColor(left);
     ctx.lineCap = late ? "butt" : "round";
     ctx.beginPath(); ctx.arc(c, c, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * left); ctx.stroke();
   }

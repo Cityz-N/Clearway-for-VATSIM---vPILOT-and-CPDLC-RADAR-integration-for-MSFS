@@ -806,11 +806,11 @@ canvas.cw-tring { pointer-events: none; }
 #cw-notes { display: flex; flex-direction: column; }
 #cw-notes .cw-notes { flex: 1 1 auto; height: auto; min-height: 0; }
 /* scrollbars drawn by the panel (MSFS shows none): a thin track on the right of each scrolling area, thumb to drag */
-.cw-sbar { position: absolute; right: 0.15em; width: 0.55em; border-radius: 0.3em; background-color: rgba(255, 255, 255, 0.05);
-  z-index: 5; cursor: pointer; }
-.cw-sthumb { position: absolute; left: 0.1em; right: 0.1em; border-radius: 0.25em; background-color: var(--muted); opacity: 0.55; }
+/* a third of the first size (0.2em thumb), inside the lists' right padding so it never sits on the cards, above
+   everything. The bar itself is a wider, invisible grab area around the thin thumb */
+.cw-sbar { position: absolute; right: 0.05em; width: 0.7em; z-index: 20; cursor: pointer; }
+.cw-sthumb { position: absolute; left: 0.25em; right: 0.25em; border-radius: 0.1em; background-color: var(--muted); opacity: 0.6; }
 .cw-sbar:hover .cw-sthumb { opacity: 0.9; }
-#cw-root.light .cw-sbar { background-color: rgba(0, 0, 0, 0.06); }
 /* Card and peek at 75% opacity (glass, like //42 Flow): only their background colours are see-through (text and buttons
    stay solid), so the sim shows behind them. Inner boxes are tints over the card's background, so they don't stack up into
    solid patches. Not on the Radar tab (.radar), where the map stays fully opaque */
@@ -842,6 +842,20 @@ canvas.cw-tring { pointer-events: none; }
 #cw-peek.tsat { border-left-color: #86efac; }
 #cw-peek.tsat .cw-peek-kind { background-color: rgba(134, 239, 172, 0.16); color: #86efac; }
 #cw-peek .cw-peek-big { font-size: 1.6em; font-weight: bold; color: #86efac; margin-top: 0.15em; }
+/* vPilot action messages ("Connecting...", errors): a small label floating just above the message box, so they don't
+   make the box taller (which pushed its bottom out of the card's fixed height) */
+.cw-compose { position: relative; }
+#cw-vp-hint { display: none; position: absolute; left: 0.8em; right: 0.8em; bottom: 100%; margin-bottom: 0.35em; z-index: 6;
+  padding: 0.35em 0.65em; border-radius: 0.55em; font-size: 0.82em; background-color: #0b1826; border: 1px solid rgba(255, 255, 255, 0.14); }
+#cw-vp-hint.on { display: block; }
+#cw-root.black #cw-vp-hint { background-color: #0e0e0e; }
+#cw-root.light #cw-vp-hint { background-color: #ffffff; border-color: rgba(30, 40, 70, 0.14); }
+/* SELCAL tab: slimmer bar and section headers, so the bar, the check box and the Generate / Saved headers all fit
+   in the card when the tab opens */
+#cw-pane-selcal .cw-bar { padding-top: 0.35em; padding-bottom: 0.35em; }
+#cw-pane-selcal .cw-section-head { padding-top: 0.42em; padding-bottom: 0.42em; }
+#cw-pane-selcal > .cw-sc-body { padding-top: 0.5em; padding-bottom: 0.4em; }
+#cw-pane-selcal > .cw-sc-body .cw-sc-check { margin-top: 0.35em; padding-top: 0.45em; }
 /* "Close vPilot?" under the vPilot bar, after clicking the green power button */
 .cw-vp-ask { display: flex; align-items: center; padding: 0.45em 0.8em; background-color: var(--rose-soft);
   border-bottom: 1px solid var(--line); flex-shrink: 0; }

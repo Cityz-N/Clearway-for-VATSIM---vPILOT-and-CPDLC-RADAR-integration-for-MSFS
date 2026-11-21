@@ -11,11 +11,16 @@
 - MSFS panel: the LT clock shows the real local time where your aircraft is (flying in California from Paris: California time), not your PC's time. It doesn't follow the time of day set in the sim
 - MSFS panel: the green vPilot power button now also closes vPilot, after a "Close vPilot?" confirmation (Close / Cancel, gone after 8 seconds). vPilot is asked to close like clicking its X, so it disconnects and shuts down normally. With "Quit Clearway when vPilot closes" on, Clearway quits too, as when you close vPilot yourself
 - MSFS panel: the start-up window colour is a softer mint green (#86efac) instead of the electric yellow-green, on the icon and the countdown ring
-- MSFS panel: right click the mint-green icon (start-up window open) to see "Start-up window" with a live "MM:SS left" countdown to its end (TSAT +6). Click it to open the card
+- MSFS panel: during the start-up window (TSAT -5 to +6, full green icon or countdown ring), a right click on the icon shows "Start-up window" with a live "MM:SS left" countdown to its end, once no message is waiting: unread messages come first, including new frequency text for others, which a right click now also shows and marks read. Click the countdown to open the card
+- MSFS panel: the countdown (ring and timer) fades from mint green through yellow and orange to red as the start-up window runs out
 - MSFS panel: the TSAT countdown ring is the size of the icon again (in 1.2.0 it showed up far too big next to the icon in the sim)
+- TSAT clock: Clearway checks the CDM data every 2:30 instead of every 3 minutes (until a TSAT is set and your flight is activated; once a minute with a CTOT, as before)
 - TSAT clock: once your flight is activated (off blocks), the clock goes back to your usual one. Before, it kept counting up in red past the window while you taxied, until take-off
 - CPDLC: a **ROGER** button for text from ATC (panel, peek and phone). Text that needs an answer shows ROGER next to STANDBY (before, only STANDBY, so you had to type ROGER); text that needs none (e.g. "APPROVED. REPORT BACK") gets an optional ROGER, and you can still just mark it read. Logon and unit notices get none
-- MSFS panel: scrollbars you can drag (or click to jump) on the vPilot chat, the ATC list, the CPDLC messages, the SELCAL tab and the notepad. MSFS shows no scrollbars in panels, so only the mouse wheel worked
+- MSFS panel: slim scrollbars you can drag (or click to jump) on the vPilot chat, the ATC list, the CPDLC messages, the SELCAL tab and the notepad. MSFS shows no scrollbars in panels, so only the mouse wheel worked
+- MSFS panel: vPilot action messages ("Connecting...", errors) float just above the message box instead of being cut off at the bottom of the card
+- MSFS panel: slimmer SELCAL headers, so the whole tab fits when it opens
+- Radar: on the compact radar the map credits are shorter and smaller, and the expand button shows arrows (out to make it bigger, in to make it smaller)
 - MSFS panel: right clicking the peek to close it also marks its message read (also when the peek had brought back your last message as unread)
 - CPDLC: a logon is also confirmed when the station answers with CURRENT ATC UNIT instead of LOGON ACCEPTED (some controller software does, e.g. BIRD): it shows as a message from the station, answers your LOGON request and stops it waiting. Before, nothing appeared and the request stayed "awaiting"
 

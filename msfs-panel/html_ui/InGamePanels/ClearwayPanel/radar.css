@@ -69,10 +69,12 @@
   background: rgba(16, 21, 29, 0.85); border: 1px solid #222b37;
 }
 #rd-expand:hover { background: rgba(32, 42, 56, 0.95); border-color: #2f5672; }
-#rd-expand i.a { position: absolute; left: 0.45em; top: 0.45em; width: 0.95em; height: 0.95em; box-sizing: content-box;
-  border: 0.13em solid #cfd8e3; border-radius: 0.12em; }
-#rd-expand i.b { display: none; }
-#rd-radar.big #rd-expand i.a { left: 0.72em; top: 0.72em; width: 0.42em; height: 0.42em; border-color: #8fd3ff; }
+/* arrows pointing out (make it bigger) or, when big, pointing in (make it smaller) */
+#rd-expand svg { position: absolute; left: 0.35em; top: 0.35em; width: 1.4em; height: 1.4em; fill: none; stroke: #cfd8e3;
+  stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#rd-expand svg.sh { display: none; stroke: #8fd3ff; }
+#rd-radar.big #rd-expand svg.ex { display: none; }
+#rd-radar.big #rd-expand svg.sh { display: block; }
 #rd-radar .hidden { display: none !important; }
 
 #rd-card {
@@ -111,6 +113,10 @@
 }
 #rd-credit { position: absolute; right: 0.5em; bottom: 0.33em; font-size: 0.75em; color: #5d6876; pointer-events: none;
   max-width: 55%; text-align: right; line-height: 1.2; }   /* stays in the right half on a narrow (compact) radar */
+#rd-credit .short { display: none; }
+#rd-radar.narrow #rd-credit { max-width: 70%; }
+#rd-radar.narrow #rd-credit .full { display: none; }
+#rd-radar.narrow #rd-credit .short { display: inline; }
 
 /* target button (was TRK): 1 = centred once (half lit), 2 = tracking (lit) */
 #rd-tools .btn.tog.target { display: flex; align-items: center; justify-content: center; line-height: normal; }

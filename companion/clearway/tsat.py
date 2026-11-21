@@ -6,7 +6,7 @@ the public vIFF API so the panel clock can count down to the start-up window. Re
 Kept light on the community server:
 - only while vPilot is connected (not as an observer), your flight is in the VATSIM data with a departure
   airport, and you're on the ground;
-- one request for your departure airport every 3 minutes until a TSAT appears and the flight is activated
+- one request for your departure airport every 2.5 minutes until a TSAT appears and the flight is activated
   (off blocks);
 - then nothing more, unless the flight has a CTOT (checked once a minute, CTOTs move);
 - it stops after take-off. Only your own flight is kept; everyone else's data is dropped at once.
@@ -26,7 +26,7 @@ import urllib.request
 log = logging.getLogger("clearway.tsat")
 
 VIFF_URL = os.environ.get("CLEARWAY_VIFF_URL", "https://api.viffsys.com").rstrip("/")
-WAIT_FOR_TSAT = 180        # seconds between checks until a TSAT is set
+WAIT_FOR_TSAT = 150        # seconds between checks until a TSAT is set and the flight is activated (2:30)
 WITH_CTOT = 60             # seconds between checks while the flight has a CTOT
 AIRBORNE_GS = 50           # kt: above this you've left the ground
 LOOP = 10                  # seconds between looks at the conditions (no request)
@@ -153,7 +153,7 @@ class TsatMixin:
                     self._tsat_next = now + WITH_CTOT
                 elif activated:
                     self._tsat_done = True     # TSAT known and the flight is active: nothing more to learn
-                # else: keep checking every 3 min, for activation (and a real TSAT when it was only suggested)
+                # else: keep checking every 2:30, for activation (and a real TSAT when it was only suggested)
         with self.lock:
             self.tsat_error = ""
             if info != self.tsat:
