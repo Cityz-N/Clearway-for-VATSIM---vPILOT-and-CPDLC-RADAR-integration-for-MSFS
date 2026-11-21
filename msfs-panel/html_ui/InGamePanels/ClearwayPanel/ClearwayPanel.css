@@ -761,11 +761,14 @@ canvas.cw-tring { pointer-events: none; }
 /* Icon blue (speech bubble + thin border): the Dark theme's navy hue, brightened so it shows on the dark icon */
 #cw-root { --icon-blue: #5b9bd5; }
 #cw-root.light { --icon-blue: #3d7bbf; }
-#cw-bubble.online:not(.idle):not(.q-faint), #cw-bubble.idle.online:hover { border-color: var(--icon-blue); }
-#cw-bubble.online:not(.idle):not(.q-faint) .cw-glyph, #cw-bubble.idle.online:hover .cw-glyph { fill: var(--icon-blue); }
-/* inactive (connected, nothing for you): colourless, the same in all three themes. Pure greys, no blue cast */
+#cw-bubble.online { border-color: var(--icon-blue); }
+#cw-bubble.online .cw-glyph { fill: var(--icon-blue); }
+/* inactive (connected, nothing for you): colourless, the same in all three themes. Pure greys, no blue cast.
+   (comes after .online above, so it wins; the faint yellow / red states are more specific and still win over it) */
 #cw-bubble.idle { background-color: #3d3d3d; border-color: #5e5e5e; }
 #cw-bubble.idle .cw-glyph { fill: #c8c8c8; }
+#cw-bubble.idle.online:hover { border-color: var(--icon-blue); }
+#cw-bubble.idle.online:hover .cw-glyph { fill: var(--icon-blue); }
 /* Unread messages: only the quarter under the pill takes its colour, fading towards the centre
    (vPilot top left in cyan, CPDLC top right in amber) */
 .cw-qglow { display: none; position: absolute; left: -0.14em; top: -0.14em; width: 3.4em; height: 3.4em; border-radius: 50%; }
@@ -785,3 +788,42 @@ canvas.cw-tring { pointer-events: none; }
 /* new vPilot text that isn't for you (frequency text for others, broadcasts): the small grey dot, bottom left. The icon
    is faint by colours (q-faint) instead of opacity then, so the dot stays visible */
 #cw-bubble .cw-odot { z-index: 1; opacity: 0.85; background-color: #c8c8c8; }
+
+/* ---------------- 1.3.0 ---------------- */
+/* One card height for every tab but the Radar, set by the panel (sizeCard: from an empty CPDLC tab up to the vPilot
+   tab with a 6-controller ATC list, growing with the messages), so switching tabs doesn't make the card jump. Each
+   tab fills the space under the header; its list scrolls inside. The Radar tab keeps its own fixed size */
+#cw-card { display: flex; flex-direction: column; height: 9.75em; }
+#cw-card.radar { height: auto !important; }
+#cw-card > .cw-head { flex-shrink: 0; }
+#cw-pane-vpilot, #cw-pane-cpdlc, #cw-pane-selcal, #cw-pane-radar, #cw-notes { flex: 1 1 auto; min-height: 0; max-height: none; }
+#cw-pane-vpilot > .cw-list, #cw-pane-cpdlc > .cw-list { flex: 1 1 auto; }
+#cw-pane-selcal { overflow-y: auto; }
+#cw-pane-radar { display: flex; flex-direction: column; }
+#cw-radar-dock { flex: none; height: 24.6em; }
+#cw-notes { display: flex; flex-direction: column; }
+#cw-notes .cw-notes { flex: 1 1 auto; height: auto; min-height: 0; }
+/* scrollbars drawn by the panel (MSFS shows none): a thin track on the right of each scrolling area, thumb to drag */
+.cw-sbar { position: absolute; right: 0.15em; width: 0.55em; border-radius: 0.3em; background-color: rgba(255, 255, 255, 0.05);
+  z-index: 5; cursor: pointer; }
+.cw-sthumb { position: absolute; left: 0.1em; right: 0.1em; border-radius: 0.25em; background-color: var(--muted); opacity: 0.55; }
+.cw-sbar:hover .cw-sthumb { opacity: 0.9; }
+#cw-root.light .cw-sbar { background-color: rgba(0, 0, 0, 0.06); }
+/* Card and peek at 95% opacity: only their background colours are see-through (text and buttons stay solid), so the
+   sim shows very faintly behind them. Inner boxes are tints over the card's background, so they don't stack up into
+   solid patches. Not on the Radar tab (.radar), where the map stays fully opaque */
+#cw-card { --bg: rgba(5, 14, 23, 0.95); --surface: rgba(40, 70, 110, 0.17); --surface-2: rgba(40, 70, 110, 0.39);
+  --unread: rgba(160, 115, 40, 0.2); }
+#cw-root.black #cw-card { --bg: rgba(0, 0, 0, 0.95); --surface: rgba(255, 255, 255, 0.055); --surface-2: rgba(255, 255, 255, 0.1);
+  --unread: rgba(160, 115, 40, 0.2); }
+#cw-root.light #cw-card { --bg: rgba(247, 248, 251, 0.95); --surface: rgba(255, 255, 255, 0.6); --surface-2: rgba(120, 130, 170, 0.1);
+  --unread: rgba(255, 200, 100, 0.12); }
+/* Radar tab: the theme's solid colours back (no :not() selector, which MSFS may not support) */
+#cw-card.radar { --bg: #050e17; --surface: #0b1826; --surface-2: #142336; --unread: #241f17; }
+#cw-root.black #cw-card.radar { --bg: #000000; --surface: #0e0e0e; --surface-2: #1a1a1a; --unread: #1f1a12; }
+#cw-root.light #cw-card.radar { --bg: #f7f8fb; --surface: #ffffff; --surface-2: #eef0f6; --unread: #fff7e8; }
+#cw-peek { background-color: rgba(11, 24, 38, 0.95); }
+#cw-root.black #cw-peek { background-color: rgba(14, 14, 14, 0.95); }
+#cw-root.light #cw-peek { background-color: rgba(255, 255, 255, 0.95); }
+/* the browser's own scrollbar (when testing outside the sim) would double up with these */
+#cw-card ::-webkit-scrollbar { width: 0; height: 0; }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.0
+
+- MSFS panel: the card has the same height on every tab (vPilot, CPDLC, SELCAL and the notepad), so switching tabs doesn't make it jump. It starts small and grows with your vPilot and CPDLC messages, up to the height of the vPilot tab with six controllers in the ATC list, and every tab follows; past that, lists scroll inside. The Radar tab keeps its own fixed size
+- MSFS panel: the SELCAL generator (callsign, codes, Generate / Save / Use in vPilot) folds away under a **Generate** header, like CPDLC's Request, closed when the panel starts. Checking a code stays visible; SimBrief opens the generator
+- MSFS panel: the card and the peek are 95% opaque: the sim shows very faintly through their background, text and buttons stay solid. The Radar tab stays fully opaque
+- Radar: the info card of an aircraft, controller or airport shows its close button (×) at the top right; the frequency or callsign used to cover it
+- MSFS panel: the mouse wheel over the card, the peek, the radar window or the icon is kept by the panel (it scrolls the list under the mouse itself), to stop it reaching the cockpit, e.g. turning a knob while the camera is moving. MSFS may still route the mouse to the cockpit while the camera moves
+- MSFS panel: the LT clock shows the real local time where your aircraft is (flying in California from Paris: California time), not your PC's time. It doesn't follow the time of day set in the sim
+- MSFS panel: the TSAT countdown ring is the size of the icon again (in 1.2.0 it showed up far too big next to the icon in the sim)
+- TSAT clock: once your flight is activated (off blocks), the clock goes back to your usual one. Before, it kept counting up in red past the window while you taxied, until take-off
+- CPDLC: a **ROGER** button for text from ATC (panel, peek and phone). Text that needs an answer shows ROGER next to STANDBY (before, only STANDBY, so you had to type ROGER); text that needs none (e.g. "APPROVED. REPORT BACK") gets an optional ROGER, and you can still just mark it read. Logon and unit notices get none
+- MSFS panel: scrollbars you can drag (or click to jump) on the vPilot chat, the ATC list, the CPDLC messages, the SELCAL tab and the notepad. MSFS shows no scrollbars in panels, so only the mouse wheel worked
+- MSFS panel: right clicking the peek to close it also marks its message read (also when the peek had brought back your last message as unread)
+- CPDLC: a logon is also confirmed when the station answers with CURRENT ATC UNIT instead of LOGON ACCEPTED (some controller software does, e.g. BIRD): it shows as a message from the station, answers your LOGON request and stops it waiting. Before, nothing appeared and the request stayed "awaiting"
+
 ## 1.2.0
 
 - MSFS panel: a small power button right of Connect / Disconnect in the vPilot tab. Red while vPilot is closed: click it to start vPilot minimized in the background, without leaving the sim. Green once vPilot is open. Clearway finds vPilot where it's installed (or where it last saw it running)

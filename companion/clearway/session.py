@@ -41,8 +41,23 @@ def reply_options(msg: dict) -> list[str]:
     if ra == "R":
         return ["ROGER", "UNABLE"] + standby
     if ra == "Y":
-        return standby
+        return ["ROGER"] + standby
     return []
+
+
+QUIET_TEXTS = ("LOGON", "CURRENT ATC UNIT", "CURRENT ATS UNIT", "HANDOVER", "LOGOFF", "SERVICE TERMINATED")
+
+
+def quick_replies(msg: dict) -> list[str]:
+    """Optional answers for an inbound message that needs none (free text from ATC, e.g. "APPROVED. REPORT BACK"):
+    a ROGER button that doesn't keep the message unread like the required answers do."""
+    if msg.get("dir") != "in" or msg.get("kind") != "cpdlc" or msg.get("reply") or msg.get("status") != "none":
+        return []
+    if msg.get("ra") not in ("NE", "N", ""):
+        return []
+    if str(msg.get("text", "")).upper().startswith(QUIET_TEXTS):
+        return []
+    return ["ROGER"]
 
 
 class Session(VpilotMixin, SelcalMixin, TsatMixin):
@@ -345,12 +360,23 @@ class Session(VpilotMixin, SelcalMixin, TsatMixin):
             with self.lock:
                 self.pending_logon = None
                 self._bump()
+        confirms_logon = False
         if unit:
             with self.lock:
                 self.current_unit = unit.group(1)
                 self._bump()
         if upper.startswith("CURRENT ATC UNIT") or upper.startswith("CURRENT ATS UNIT"):
-            return
+            # some controller clients confirm a logon with CURRENT ATC UNIT instead of LOGON ACCEPTED: when it answers
+            # the logon we're waiting for, show it as the confirmation; otherwise it's just a silent unit update
+            with self.lock:
+                confirms_logon = bool(self.pending_logon) and self.pending_logon == item.sender
+                if confirms_logon:
+                    self.pending_logon = None
+                    self._bump()
+            if not confirms_logon:
+                return
+        if upper.startswith("LOGON ACCEPTED"):
+            confirms_logon = True
         if "LOGOFF" in upper:
             with self.lock:
                 self.current_unit = None
@@ -358,6 +384,9 @@ class Session(VpilotMixin, SelcalMixin, TsatMixin):
                 self._bump()
 
         display = UNIT_RE.sub(lambda m: m.group(1), text).replace("_", " ").strip()
+        if confirms_logon and not upper.startswith("LOGON ACCEPTED"):
+            # CURRENT ATC UNIT@_@BIRD@_@REYKJAVIK CONTROL -> CURRENT ATC UNIT BIRD REYKJAVIK CONTROL
+            display = re.sub(r"\s+", " ", re.sub(r"[@_]+", " ", text)).strip()
         # Many ATC clients prefix the aircraft callsign; drop it for readability.
         if self.callsign and display.upper().startswith(self.callsign + " "):
             display = display[len(self.callsign) + 1:]
@@ -368,6 +397,15 @@ class Session(VpilotMixin, SelcalMixin, TsatMixin):
             if pkt.mrn is not None:
                 for m in reversed(self.messages):
                     if m["dir"] == "out" and m["kind"] == "cpdlc" and m["min"] == pkt.mrn and m["station"] == item.sender:
+                        m["status"] = "answered"
+                        m["reply"] = display
+                        linked = m["id"]
+                        break
+            if linked is None and confirms_logon:
+                # the confirmation doesn't always refer to our request's number: answer the open logon request
+                for m in reversed(self.messages):
+                    if m["dir"] == "out" and m["text"] == "REQUEST LOGON" and m["station"] == item.sender \
+                            and m["status"] == "awaiting":
                         m["status"] = "answered"
                         m["reply"] = display
                         linked = m["id"]
@@ -681,6 +719,7 @@ class Session(VpilotMixin, SelcalMixin, TsatMixin):
             for m in self.messages:
                 item = dict(m)
                 item["options"] = reply_options(m)
+                item["quick"] = quick_replies(m)
                 msgs.append(item)
             unacked_vp = sum(1 for m in self.messages if m["dir"] == "in" and not m["acked"] and m["kind"] in VP_KINDS)
             unacked_cpdlc = sum(1 for m in self.messages if m["dir"] == "in" and not m["acked"] and m["kind"] not in VP_KINDS)

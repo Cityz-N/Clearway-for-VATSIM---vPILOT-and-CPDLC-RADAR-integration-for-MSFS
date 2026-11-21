@@ -765,7 +765,9 @@
       h = "<div class='cs'>" + esc(selected.key) + (t && t.name ? "<span class='nm'>" + esc(t.name) + "</span>" : "") + "</div>";
       if (a) for (var j = 0; j < a.c.length; j++) h += ctlHtml(a.c[j]);
     }
-    c.innerHTML = "<span class='x' id='rd-cardx'><i class='a'></i><i class='b'></i></span>" + h;
+    c.innerHTML = "<span class='x' id='rd-cardx' title='Close'><i class='a'></i><i class='b'></i></span>" + h;
+    // the first line keeps clear of the close button (the frequency used to cover it)
+    for (var fi = 0; fi < c.children.length; fi++) if (c.children[fi].id !== "rd-cardx") { c.children[fi].className += " first"; break; }
     c.className = selected.kind === "airport" ? "ap" : "";
     el("cardx").onclick = function () { selected = null; showCard(); dirty = true; };
     // an ATIS is folded to two lines: its link shows all of it (and it stays open across refreshes)

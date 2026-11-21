@@ -169,7 +169,9 @@
       const arrow = m.dir === "out" ? "To" : "From";
       let foot = "";
       if (m.options.length || (m.dir === "in" && m.status !== "closed" && ["cpdlc", "telex", "pm", "radio"].includes(m.kind))) {
-        foot += m.options.map((o) => `<button class="reply ${o}" data-reply="${o}" data-id="${m.id}">${o}</button>`).join("");
+        // required answers, or an optional ROGER for ATC text that needs no answer
+        const answers = m.options.length ? m.options : (m.quick || []);
+        foot += answers.map((o) => `<button class="reply ${o}" data-reply="${o}" data-id="${m.id}">${o}</button>`).join("");
         if (m.kind === "cpdlc" && (m.status === "open" || m.status === "standby")) foot += `<button class="reply" data-free="${m.id}">Free text</button>`;
         if (["telex", "pm", "radio"].includes(m.kind)) foot += `<button class="reply" data-free="${m.id}">Reply</button>`;
       }

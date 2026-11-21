@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PANEL = ROOT / "msfs-panel"
 DIST = ROOT / "dist" / "clearway-panel"
 PACKAGE_NAME = "clearway-panel"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 # MSFS package manifests use X.Y.Z; a fourth part (hotfix) is dropped there
 MANIFEST_VERSION = ".".join(VERSION.split(".")[:3])
 

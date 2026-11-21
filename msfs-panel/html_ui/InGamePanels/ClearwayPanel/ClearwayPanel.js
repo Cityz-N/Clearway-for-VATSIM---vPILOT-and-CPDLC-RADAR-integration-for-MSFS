@@ -642,8 +642,10 @@
       var unread = m.dir === "in" && !m.acked;
       var label = m.tag || { cpdlc: "CPDLC", telex: "TELEX" }[m.kind] || "INFO";
       var actions = "";
-      for (var j = 0; j < m.options.length; j++) {
-        actions += "<div class=\"cw-btn " + m.options[j] + "\" data-reply=\"" + m.options[j] + "\" data-id=\"" + m.id + "\">" + m.options[j] + "</div>";
+      // required answers (options), or an optional ROGER for ATC text that needs no answer (quick)
+      var answers = m.options.length ? m.options : (m.quick || []);
+      for (var j = 0; j < answers.length; j++) {
+        actions += "<div class=\"cw-btn " + answers[j] + "\" data-reply=\"" + answers[j] + "\" data-id=\"" + m.id + "\">" + answers[j] + "</div>";
       }
       var st = "";
       if (m.dir === "in" && m.reply) st = "Answered " + esc(m.reply);
@@ -1036,7 +1038,17 @@
     });
     wireInput(el("cw-sc-sbuser-in"), function () { scFetchSimbrief(el("cw-sc-sbuser-in").value.trim()); });
     el("cw-sc-sbuser-go").addEventListener("click", function () { scFetchSimbrief(el("cw-sc-sbuser-in").value.trim()); });
+    // the generator section folds like CPDLC's Request; closed when the panel starts
+    var setScGen = function (open) {
+      el("cw-sc-genbox").classList.toggle("hidden", !open);
+      el("cw-sc-gen-chev").classList.toggle("closed", !open);
+    };
+    el("cw-sc-gen-toggle").addEventListener("click", function () {
+      setScGen(el("cw-sc-genbox").classList.contains("hidden"));
+      placeCard();
+    });
     el("cw-sc-sb").addEventListener("click", function () {
+      setScGen(true);                       // SimBrief fills the generator: show it
       var sc = state && state.selcal;
       if (sc && sc.simbrief_user && !scUserOpen) scFetchSimbrief();
       else { scUserOpen = !scUserOpen || !(sc && sc.simbrief_user); renderSelcal(); placeCard(); if (scUserOpen) el("cw-sc-sbuser-in").focus(); }
@@ -1130,7 +1142,35 @@
     return { right: b.offsetLeft + bs / 2 < window.innerWidth / 2, down: b.offsetTop + bs / 2 < window.innerHeight / 2 };
   }
 
+  // One card height for every tab but the Radar: as tall as the taller of the vPilot and CPDLC tabs needs (so it
+  // starts small, the empty vPilot tab, and grows with their messages) up to CARD_MAX (the vPilot tab with a
+  // 6-controller ATC list), whichever tab is shown, so switching tabs doesn't make the card jump. The Radar tab keeps
+  // its own fixed size (CSS). Sizes in em: they scale with the screen like the rest of the panel.
+  var CARD_MIN = 0, CARD_MAX = 21.7;
+  function naturalHeight(p) {
+    // how tall a tab would be with all its content: laid out on its own for a moment, invisibly
+    var wasHidden = p.classList.contains("hidden"), keep = p.getAttribute("style") || "";
+    p.classList.remove("hidden");
+    p.style.cssText = keep + ";position:absolute;visibility:hidden;left:0;right:0;top:0;height:auto;max-height:none;flex:none;";
+    var h = p.offsetHeight;
+    p.setAttribute("style", keep);
+    if (wasHidden) p.classList.add("hidden");
+    return h;
+  }
+  function sizeCard() {
+    var c = el("cw-card");
+    if (!c || c.classList.contains("hidden")) return;
+    if (c.classList.contains("radar")) { c.style.height = ""; return; }
+    var em = parseFloat(window.getComputedStyle(c).fontSize) || 14;
+    var need = Math.max(naturalHeight(el("cw-pane-vpilot")), naturalHeight(el("cw-pane-cpdlc")));
+    var h = (el("cw-head").offsetHeight + need + 2) / em;   // + the card's border
+    h = Math.max(CARD_MIN, Math.min(CARD_MAX, h));
+    var v = h.toFixed(2) + "em";
+    if (c.style.height !== v) c.style.height = v;
+  }
+
   function placeCard() {
+    sizeCard();
     var b = el("cw-bubble"), c = el("cw-card");
     var bx = b.offsetLeft, by = b.offsetTop, bs = b.offsetWidth || 48;
     var cw = c.offsetWidth || 350, ch = c.offsetHeight || 300, gap = 10 * scale;
@@ -1202,10 +1242,11 @@
     var text = plain(m.text || "");
     if (text.length > 320) text = text.slice(0, 317) + "...";
     var foot = markedUnread ? "<div class=\"cw-peek-foot unread\">Marked as unread</div>" : "";
-    if (!isVp && m.options && m.options.length) {            // answer straight from the peek
+    var peekAnswers = isVp ? [] : (m.options && m.options.length ? m.options : (m.quick || []));
+    if (peekAnswers.length) {                                  // answer straight from the peek
       var btns = "";
-      for (var j = 0; j < m.options.length; j++) {
-        btns += "<div class=\"cw-btn " + m.options[j] + "\" data-peek-reply=\"" + m.options[j] + "\">" + m.options[j] + "</div>";
+      for (var j = 0; j < peekAnswers.length; j++) {
+        btns += "<div class=\"cw-btn " + peekAnswers[j] + "\" data-peek-reply=\"" + peekAnswers[j] + "\">" + peekAnswers[j] + "</div>";
       }
       foot += "<div class=\"cw-actions\">" + btns + "</div><div class=\"cw-peek-foot\" id=\"cw-peek-state\"></div>";
     }
@@ -1232,6 +1273,84 @@
     el("cw-peek").classList.add("hidden");
     peekMsg = null;
     peekHover = false;
+  }
+
+  // Scrollbars: MSFS draws none for panel lists, so the mouse wheel was the only way to scroll. Each scrolling area
+  // gets a thin bar on its right, laid over it in its parent: drag the thumb, or click the track to jump there.
+  var sbars = [];
+  function setupScrollbars() {
+    ["cw-vp-chat", "cw-vp-atc", "cw-list", "cw-pane-selcal", "cw-notes-text"].forEach(function (id) {
+      var host = el(id);
+      if (!host || !host.parentNode) return;
+      var par = host.parentNode;
+      if (window.getComputedStyle(par).position === "static") par.style.position = "relative";
+      var bar = document.createElement("div"), thumb = document.createElement("div");
+      bar.className = "cw-sbar hidden"; thumb.className = "cw-sthumb";
+      bar.appendChild(thumb);
+      par.appendChild(bar);
+      var sb = { host: host, bar: bar, thumb: thumb, drag: null };
+      sbars.push(sb);
+      host.addEventListener("scroll", function () { updateScrollbar(sb); });
+      thumb.addEventListener("mousedown", function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation();
+        sb.drag = { y: e.clientY, top: host.scrollTop };
+      });
+      bar.addEventListener("mousedown", function (e) {            // click on the track: jump there
+        if (e.button !== 0 || e.target === thumb) return;
+        e.preventDefault(); e.stopPropagation();
+        var r = bar.getBoundingClientRect(), th = thumb.offsetHeight;
+        var f = Math.max(0, Math.min(1, (e.clientY - r.top - th / 2) / Math.max(1, r.height - th)));
+        host.scrollTop = f * (host.scrollHeight - host.clientHeight);
+        sb.drag = { y: e.clientY, top: host.scrollTop };
+      });
+    });
+    document.addEventListener("mousemove", function (e) {
+      for (var i = 0; i < sbars.length; i++) {
+        var sb = sbars[i];
+        if (!sb.drag) continue;
+        var range = sb.host.scrollHeight - sb.host.clientHeight, track = sb.bar.clientHeight - sb.thumb.offsetHeight;
+        sb.host.scrollTop = sb.drag.top + (e.clientY - sb.drag.y) * range / Math.max(1, track);
+      }
+    });
+    document.addEventListener("mouseup", function () { for (var i = 0; i < sbars.length; i++) sbars[i].drag = null; });
+    setInterval(function () { for (var i = 0; i < sbars.length; i++) updateScrollbar(sbars[i]); }, 300);
+  }
+  // Mouse wheel over the card, peek, radar window or icon: marked as used here (the list under the mouse is scrolled
+  // by hand), so MSFS has less reason to pass it on to the cockpit, e.g. while the camera is moving. The radar zooms
+  // with its own wheel handler first and marks the event itself.
+  function swallowWheel(root) {
+    if (!root) return;
+    root.addEventListener("wheel", function (e) {
+      e.stopPropagation();
+      if (e.defaultPrevented) return;                 // already used (radar zoom)
+      var t = e.target;
+      while (t && t.nodeType === 1) {
+        var oy = window.getComputedStyle(t).overflowY;
+        if ((oy === "auto" || oy === "scroll") && t.scrollHeight > t.clientHeight + 1) break;
+        if (t === root) { t = null; break; }
+        t = t.parentNode;
+      }
+      if (t && t.nodeType === 1) {
+        var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? t.clientHeight : 1);
+        t.scrollTop += dy;
+      }
+      e.preventDefault();
+    }, false);
+  }
+  function setupWheel() {
+    ["cw-card", "cw-peek", "cw-radar-win", "cw-bubble"].forEach(function (id) { swallowWheel(el(id)); });
+  }
+  function updateScrollbar(sb) {
+    var h = sb.host, ch = h.clientHeight, sh = h.scrollHeight;
+    var show = h.offsetParent !== null && ch > 0 && sh > ch + 1;
+    sb.bar.classList.toggle("hidden", !show);
+    if (!show) return;
+    sb.bar.style.top = (h.offsetTop + 3) + "px";
+    sb.bar.style.height = Math.max(10, ch - 6) + "px";
+    var track = ch - 6, th = Math.max(Math.round(track * ch / sh), 24);
+    sb.thumb.style.height = th + "px";
+    sb.thumb.style.top = Math.round((track - th) * h.scrollTop / Math.max(1, sh - ch)) + "px";
   }
 
   function onPeekClick(e) {
@@ -1394,7 +1513,9 @@
     if (tsatAlertOn && state) render();
   }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
-  function tsatNow() { return state && reachable && state.tsat && state.tsat.tsat_ms ? state.tsat : null; }
+  // once the flight is activated (off blocks) the start-up window no longer matters: no TSAT clock, alert or ring,
+  // and the clock goes back to your usual one (before, it kept counting up in red while you taxied)
+  function tsatNow() { return state && reachable && state.tsat && state.tsat.tsat_ms && !state.tsat.activated ? state.tsat : null; }
   function clockModes() { return tsatNow() ? CLOCK_MODES : CLOCK_MODES.slice(0, 3); }
   // a new or changed TSAT switches the clock to it; when it's gone the clock goes back to your usual one
   function checkTsat() {
@@ -1418,7 +1539,7 @@
   // TSAT ring on the icon, once the start-up window alert is cleared and while the flight isn't activated (off
   // blocks): a yellow-green arc from 12 o'clock that retracts counterclockwise as the window (TSAT -5 to +6 min)
   // runs out, then a full electric-orange ring once the window has expired
-  // Drawn on a canvas at three times the icon's size (MSFS ignores SVG dash patterns and draws SVG coarsely).
+  // Drawn on a canvas (MSFS ignores SVG dash patterns and draws SVG coarsely).
   var ringDrawn = "";
   function updateTsatRing() {
     var b = el("cw-bubble"), cv = el("cw-tring-cv"), t = tsatNow(), now = Date.now();
@@ -1428,11 +1549,17 @@
     b.classList.toggle("tsat-late", !!late);
     if (!on) { ringDrawn = ""; return; }
     var left = late ? 1 : Math.max(0, Math.min(1, (t.tsat_ms + 360000 - now) / 660000));
-    var size = Math.round((cv.offsetWidth || b.offsetWidth || 48) * 3);
+    // one canvas pixel per screen pixel, like the radar: MSFS shows a canvas at its own pixel size and ignores a CSS
+    // size, so a larger (supersampled) canvas came out too big. The CSS size is set to match, in px.
+    var size = Math.round(b.offsetWidth || 48);        // the icon including its border
     var key = size + (late ? "L" : "") + left.toFixed(4);
     if (key === ringDrawn) return;
     ringDrawn = key;
-    if (cv.width !== size) { cv.width = size; cv.height = size; }
+    if (cv.width !== size) {
+      cv.width = size; cv.height = size;
+      cv.style.width = size + "px"; cv.style.height = size + "px";
+      cv.style.left = cv.style.top = (-(size - (b.clientWidth || size)) / 2) + "px";   // over the border
+    }
     var ctx = cv.getContext("2d"), c = size / 2, lw = size * 0.042, r = size * 0.475;
     ctx.clearRect(0, 0, size, size);
     ctx.lineWidth = lw;
@@ -1462,7 +1589,27 @@
     } else if (clockMode === "utc") {
       text = pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + ":" + pad2(d.getUTCSeconds()) + "z";
     } else if (clockMode === "local") {
-      text = pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()) + " LT";
+      // the real time now where the aircraft is: the real UTC time (PC clock) plus the time zone of the aircraft's spot.
+      // The sim only gives the zone: its local time minus its UTC time, which doesn't depend on the time of day set in
+      // the sim. Outside the sim: the PC's own local time
+      var zone = null;
+      try {
+        if (typeof SimVar !== "undefined") {
+          var lt = SimVar.GetSimVarValue("E:LOCAL TIME", "seconds"), zt = SimVar.GetSimVarValue("E:ZULU TIME", "seconds");
+          if (typeof lt === "number" && typeof zt === "number" && !isNaN(lt) && !isNaN(zt) && (lt || zt)) {
+            zone = lt - zt;
+            while (zone > 14 * 3600) zone -= 86400;          // across midnight
+            while (zone < -12 * 3600) zone += 86400;
+            zone = Math.round(zone / 900) * 900;            // zones are whole quarter hours
+          }
+        }
+      } catch (e) { zone = null; }
+      if (zone !== null) {
+        var lsec = ((Math.floor(d.getTime() / 1000) + zone) % 86400 + 86400) % 86400;
+        text = pad2(Math.floor(lsec / 3600)) + ":" + pad2(Math.floor(lsec / 60) % 60) + ":" + pad2(lsec % 60) + " LT";
+      } else {
+        text = pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()) + " LT";
+      }
     } else {
       var secs = null;
       try { if (typeof SimVar !== "undefined") secs = SimVar.GetSimVarValue("E:ZULU TIME", "seconds"); } catch (e) { secs = null; }
@@ -1806,8 +1953,19 @@
     // peek() ignores a second call within 350 ms, so a sim that sends both still peeks once.
     el("cw-bubble").addEventListener("mouseup", function (e) { if (e.button === 2) { e.preventDefault(); peek(); } });
     el("cw-peek").addEventListener("click", onPeekClick);
-    // right click on the peek closes it (mousedown, contextmenu, or only the release in MSFS 2024)
-    var closePeekRight = function (e) { if (e.type === "contextmenu" || e.button === 2) { e.preventDefault(); e.stopPropagation(); hidePeek(); } };
+    // right click on the peek closes it and marks its message read (also one the peek brought back as unread)
+    // (mousedown, contextmenu, or only the release in MSFS 2024)
+    var closePeekRight = function (e) {
+      if (e.type !== "contextmenu" && e.button !== 2) return;
+      e.preventDefault(); e.stopPropagation();
+      var m = peekMsg;
+      if (m && !m.acked && ackPending[m.id] === undefined) {
+        ackPending[m.id] = 1;
+        m.acked = true;
+        act("ack", { id: m.id }, null, null, function () { delete ackPending[m.id]; });
+      }
+      hidePeek();
+    };
     el("cw-peek").addEventListener("mousedown", closePeekRight);
     el("cw-peek").addEventListener("mouseup", closePeekRight);
     el("cw-peek").addEventListener("contextmenu", closePeekRight);
@@ -2017,6 +2175,8 @@
     var atcParam = /[?&]atc=([A-Z0-9_]+)/i.exec(window.location.search || "");
     if (atcParam) { atcOpen = true; setTimeout(function () { toggleAtc(atcParam[1].toUpperCase()); }, 600); }
 
+    setupScrollbars();
+    setupWheel();
     introUntil = Date.now() + 10000;
     setTimeout(render, 10100);   // back to the faint icon after the first 10 s
     render();
