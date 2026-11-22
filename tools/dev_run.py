@@ -75,6 +75,18 @@ if os.environ.get("CLEARWAY_FAKE_NAMES") is not None:
             feed["names"] = dict(_fake)
         return feed
     _selcal.SelcalMixin._vatsim_feed = _feed_fake_names
+    # the radar cards show controllers' names too: every name there becomes "John Doe"
+    from clearway import radar as _radar
+    for _cls in vars(_radar).values():
+        if isinstance(_cls, type) and hasattr(_cls, "build_atc"):
+            _real_build = _cls.build_atc
+
+            def _build_fake_names(self, feed, freqs, _real=_real_build):
+                for c in list(feed.get("controllers", [])) + list(feed.get("atis", [])):
+                    if c.get("name"):
+                        c["name"] = "John Doe"
+                return _real(self, feed, freqs)
+            _cls.build_atc = _build_fake_names
 if "--tray" not in sys.argv:
     sys.argv.append("--console")
 clearway_app.main()

@@ -561,7 +561,7 @@
       }
       var top = named ? y - 16 : y - 4;
       gridAdd(bx - 1, top, w + 2, by + 13 - top);
-      badgeHits.push([bx - 2, top, w + 4, by + 14 - top, a]);
+      badgeHits.push([bx - 2, top, w + 4, by + 14 - top, a, { x: bx + w / 2, y: by + 6 }]);   // [5]: the badges' middle
     }
     ctx.textAlign = "left";
   }
@@ -1171,6 +1171,25 @@
     el("detach").className = "";
     el("detach").onclick = function () { o.onDetach(); };
   }
+  // read only, for the scripted demo (tools/demo_anim): where each staffed airport's controller badges are on screen
+  // right now, so a click can land on them exactly
+  window.ClearwayRadar.badgeTargets = function () {
+    var r = box.getBoundingClientRect(), out = [];
+    for (var i = 0; i < badgeHits.length; i++) {
+      var b = badgeHits[i], m = b[5];
+      if (m) out.push({ icao: b[4].icao, n: (b[4].c || []).length, x: r.left + m.x * UI, y: r.top + m.y * UI });
+    }
+    return out;
+  };
+  // the same for the aircraft on screen (airborne ones), with their altitude
+  window.ClearwayRadar.planeTargets = function () {
+    var r = box.getBoundingClientRect(), out = [];
+    for (var i = 0; i < hits.length; i++) {
+      var p = hits[i];
+      if (p.gs >= 50) out.push({ cs: p.cs, alt: p.alt, x: r.left + p.x * UI, y: r.top + p.y * UI });
+    }
+    return out;
+  };
   // Expand button: Clearway switches the radar between its compact size and the big one (card or window)
   if (o.onExpand) {
     el("expand").className = "";
@@ -1379,6 +1398,8 @@
   // Clearway mounts the radar once its panel is ready; the browser test page calls mount() itself.
   var started = false;
   window.ClearwayRadar = {
+    badgeTargets: function () { return []; },   // replaced once the radar runs (start)
+    planeTargets: function () { return []; },
     mount: function (o) {
       if (started) return;
       started = true;
