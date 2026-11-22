@@ -212,6 +212,8 @@ class SelcalMixin:
             pilots: dict[str, bool] = {}
             prefiles: set[str] = set()
             moving: dict[str, dict] = {}           # online pilots: departure airport and ground speed (TSAT check)
+            my_cid = str(self.cfg.get("vatsim_cid") or "").strip()
+            mine = None                            # your own flight plan (matched by your CID): online first, else prefile
             for where, items in (("online", data.get("pilots", [])), ("prefiled", data.get("prefiles", []))):
                 for p in items:
                     cs = str(p.get("callsign", "")).upper()
@@ -225,12 +227,16 @@ class SelcalMixin:
                     code = parse_code(m.group(1)) if m else None
                     if code:
                         used.setdefault(code_key(code), []).append({"callsign": cs, "code": code, "where": where})
+                    if my_cid and fp and mine is None and str(p.get("cid", "")).strip() == my_cid:
+                        mine = {"callsign": cs, "type": _icao_type(fp), "selcal": code, "where": where,
+                                "departure": str(fp.get("departure") or "").upper(),
+                                "arrival": str(fp.get("arrival") or "").upper()}
             # controllers (and ATIS stations): the name each one shows on VATSIM (full name, first name or CID),
             # for the vPilot ATC list
             names = {str(c.get("callsign", "")).upper(): str(c.get("name") or "").strip()
                      for c in list(data.get("controllers", [])) + list(data.get("atis", []))}
             self._feed = {"ts": time.time(), "used": used, "pilots": pilots, "prefiles": prefiles, "moving": moving,
-                          "names": names, "count": len(pilots) + len(prefiles)}
+                          "names": names, "mine": mine, "count": len(pilots) + len(prefiles)}
             self._feed_error = ""
         with self.lock:
             self._bump()          # "Free / Used by" lines on every screen follow the new data
@@ -347,6 +353,7 @@ class SelcalMixin:
     # ------------------------------------------------------------ flight plan status (vPilot)
     def _fp_loop(self) -> None:
         last = 0.0
+        idle_fetch = 0.0
         while True:
             time.sleep(5)
             connected = self.vpilot_connected and self.vpilot_active() and not self.vpilot_observer
@@ -356,6 +363,12 @@ class SelcalMixin:
                         self.fp_status = None
                         self._bump()
                 last = 0.0
+                # not connected yet: keep your filed flight plan (prefile, by CID) at hand for vPilot's connect form
+                # and the SELCAL tab, at most once a minute and only while vPilot is open or the panel is showing
+                if (str(self.cfg.get("vatsim_cid") or "").strip() and (self.vpilot_active() or self.panel_active())
+                        and time.time() - idle_fetch >= 60):
+                    idle_fetch = time.time()
+                    self._vatsim_feed(max_age=60)
                 continue
             if time.time() - last < FP_CHECK_EVERY:
                 continue
@@ -404,7 +417,20 @@ class SelcalMixin:
             "max_per_callsign": MAX_PER_CALLSIGN,
             "vatsim": {"checked": bool(feed), "age": int(time.time() - feed["ts"]) if feed else None,
                        "count": feed["count"] if feed else 0, "error": self._feed_error},
+            # your own VATSIM flight plan (prefile or online, by your CID): fills vPilot's connect form, SELCAL fallback
+            "vatsim_fp": dict(feed["mine"]) if feed and feed.get("mine") else None,
         }
+
+
+def _icao_type(fp: dict) -> str:
+    """The aircraft's ICAO type from a VATSIM flight plan: aircraft_short ('B77L'), else the middle of 'H/B77L/L'."""
+    short = str(fp.get("aircraft_short") or "").strip().upper()
+    if short:
+        return short
+    parts = [x for x in str(fp.get("aircraft_faa") or fp.get("aircraft") or "").upper().split("/") if x]
+    if len(parts) >= 2 and len(parts[0]) == 1:       # H/B77L/L: wake category first
+        return parts[1].split("-")[0]
+    return parts[0].split("-")[0] if parts else ""
 
 
 def _time_ms(value) -> int:

@@ -58,12 +58,24 @@
     const vpNow = s.vpilot || {};
     const vpTones = vpNow.connected && !vpNow.observer && vpNow.last ? String(vpNow.last.selcal || "").toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
     const vpSel = vpTones.length === 4 ? vpTones.slice(0, 2) + "-" + vpTones.slice(2) : "";
-    if (ofp) {
+    // your VATSIM flight plan (by your CID): its SELCAL when SimBrief has none, or the whole plan without SimBrief
+    const vfp = sc.vatsim_fp, vfpSel = vfp && vfp.selcal ? vfp.selcal : "";
+    if (!ofp && vfp) {
+      const vroute = [vfp.departure && vfp.arrival ? `${vfp.departure}→${vfp.arrival}` : "", vfp.type].filter(Boolean).join(" · ");
+      $("scOfp").innerHTML = `<div class="sc-ofp"><div class="sc-ofp-top"><b class="mono">${esc(vfp.callsign || "–")}</b><span class="muted small-text">VATSIM · ${esc(vroute)}</span></div>` +
+        (vfpSel
+          ? `<div class="sc-ofp-code"><span class="sc-code small" data-copy="${esc(vfpSel)}">${codeHtml(vfpSel)}</span></div>
+             <p class="muted small-text">In your VATSIM flight plan.</p>`
+          : '<p class="muted small-text">No SELCAL in your VATSIM flight plan.</p>') + "</div>";
+    } else if (ofp) {
       const route = [ofp.departure && ofp.arrival ? `${ofp.departure}→${ofp.arrival}` : "", ofp.aircraft, ofp.reg].filter(Boolean).join(" · ");
       $("scOfp").innerHTML = `<div class="sc-ofp"><div class="sc-ofp-top"><b class="mono">${esc(ofp.callsign || "–")}</b><span class="muted small-text">${esc(route)}</span></div>` +
         (ofp.selcal
           ? `<div class="sc-ofp-code"><span class="sc-code small" data-copy="${esc(ofp.selcal)}">${codeHtml(ofp.selcal)}</span>${usedHtml(ofp.used_by)}</div>
              <div class="row">${isExtended(ofp.selcal) ? "" : '<button class="ghost" data-ofp="use">Use in vPilot</button>'}<button class="ghost" data-ofp="save">Save</button></div>`
+          : vfpSel
+          ? `<div class="sc-ofp-code"><span class="sc-code small" data-copy="${esc(vfpSel)}">${codeHtml(vfpSel)}</span></div>
+             <p class="muted small-text">Not in SimBrief: the SELCAL in your VATSIM flight plan.</p>`
           : vpSel
           ? `<div class="sc-ofp-code"><span class="sc-code small" data-copy="${esc(vpSel)}">${codeHtml(vpSel)}</span></div>
              <p class="muted small-text">Not in the flight plan: the SELCAL you connected to VATSIM with.</p>`

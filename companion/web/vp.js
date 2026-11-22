@@ -85,7 +85,17 @@
     // prefill the connect form
     const last = vp.last || {}, f = s.flight || {};
     const fill = (id, v) => { const el = $(id); if (el && !el.value && v && document.activeElement !== el) el.value = v; };
-    fill("vpCs", last.callsign || s.callsign); fill("vpType", last.type || f.aircraft); fill("vpSelcal", fmtSelcal(last.selcal));
+    // type and SELCAL: from your VATSIM flight plan (by your CID) when there is one, else your last connection; a value
+    // filled in this way follows the flight plan, one you typed is never touched
+    const vfp = (s.selcal && s.selcal.vatsim_fp) || {};
+    const auto = (id, v) => {
+      const el = $(id);
+      if (!el || !v || document.activeElement === el) return;
+      if (!el.value || (el.dataset.auto !== undefined && el.value === el.dataset.auto)) { el.value = v; el.dataset.auto = v; }
+    };
+    fill("vpCs", last.callsign || s.callsign);
+    auto("vpType", vfp.type || last.type || f.aircraft);
+    auto("vpSelcal", fmtSelcal(vfp.selcal || last.selcal));
     document.querySelectorAll("#vpXpdr button").forEach((b) => {
       b.classList.toggle("on", vp.modec === true ? b.dataset.v === "c" : vp.modec === false ? b.dataset.v === "sby" : false);
       b.disabled = !vp.connected || !!vp.observer;

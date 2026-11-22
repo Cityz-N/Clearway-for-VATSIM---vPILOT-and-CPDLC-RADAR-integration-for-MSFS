@@ -777,8 +777,15 @@
       if (openAtis[k]) delete openAtis[k]; else openAtis[k] = 1;
       showCard();
     };
+    // a controller's (or ATIS's) callsign line folds its details away / brings them back; kept across refreshes
+    var folds = c.getElementsByClassName("foldable");
+    for (var n = 0; n < folds.length; n++) folds[n].onclick = function () {
+      var k = this.getAttribute("data-f");
+      if (foldedCtl[k]) delete foldedCtl[k]; else foldedCtl[k] = 1;
+      showCard();
+    };
   }
-  var openAtis = {};
+  var openAtis = {}, foldedCtl = {};
   // departures / arrivals: a small box at the bottom right, only while an airport is selected.
   // Two circles with the counts (red = departures, green = arrivals); filled = its lines are drawn.
   function showTraffic() {
@@ -800,9 +807,16 @@
       atis = "<div class='atis" + (open ? " open" : "") + "'>" + lines.join("<br>") + "</div>" +
         (isAtis ? "<div class='atis-more' data-k='" + esc(k.cs) + "'>" + (open ? "Show less" : "Show full ATIS") + "</div>" : "");
     }
-    return "<div class='ctl'><div class='row'><b>" + esc(k.cs) + "</b><span class='freq'>" + esc(k.f) + "</span></div>" +
-      (voice ? "<div class='sub'>" + esc(voice) + "</div>" : "") +
-      (k.n ? "<div class='sub'>" + esc(k.n) + "</div>" : "") + atis + "</div>";
+    // the callsign line folds the details (station name, controller's name, information / ATIS) away: an arrow
+    // pointing down when open, right when folded. Only when there are details to fold
+    var details = (voice ? "<div class='sub'>" + esc(voice) + "</div>" : "") +
+      (k.n ? "<div class='sub'>" + esc(k.n) + "</div>" : "") + atis;
+    var folded = !!foldedCtl[k.cs];
+    var head = details
+      ? "<div class='row foldable' data-f='" + esc(k.cs) + "' title='" + (folded ? "Show details" : "Hide details") + "'>" +
+        "<span class='cs'><i class='fold" + (folded ? " shut" : "") + "'></i><b>" + esc(k.cs) + "</b></span><span class='freq'>" + esc(k.f) + "</span></div>"
+      : "<div class='row'><b>" + esc(k.cs) + "</b><span class='freq'>" + esc(k.f) + "</span></div>";
+    return "<div class='ctl'>" + head + (folded ? "" : details) + "</div>";
   }
   function findSector(k) { if (!atc) return null; for (var i = 0; i < atc.sectors.length; i++) if (atc.sectors[i].k === k) return atc.sectors[i]; return null; }
   function findAtcAirport(k) { if (!atc) return null; for (var i = 0; i < atc.airports.length; i++) if (atc.airports[i].icao === k) return atc.airports[i]; return null; }

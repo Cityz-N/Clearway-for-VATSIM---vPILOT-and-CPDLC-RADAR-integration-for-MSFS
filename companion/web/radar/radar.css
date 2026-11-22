@@ -90,6 +90,14 @@
 #rd-card .row b { color: #fff; font-weight: 600; }
 #rd-card .freq { color: #7fe0a0; font-weight: 600; margin-left: 0.8em; }
 #rd-card .ctl { padding: 0.25em 0; border-top: 1px solid #222b37; }
+/* fold arrow before a controller's / ATIS's callsign: down = details shown, right = folded */
+#rd-card .row.foldable { cursor: pointer; }
+#rd-card .row.foldable .cs { display: flex; align-items: center; }
+#rd-card .fold { display: inline-block; width: 0; height: 0; margin-right: 0.4em; border-style: solid;
+  border-width: 0.38em 0.3em 0 0.3em; border-color: #8d9bad transparent transparent transparent; }
+#rd-card .fold.shut { border-width: 0.3em 0 0.3em 0.38em; border-color: transparent transparent transparent #8d9bad; }
+#rd-card .row.foldable:hover .fold { border-top-color: #e6e9f0; }
+#rd-card .row.foldable:hover .fold.shut { border-top-color: transparent; border-left-color: #e6e9f0; }
 #rd-card .ctl:first-of-type { border-top: 0; }
 /* controller information: shown in full, one VATSIM line per line. An ATIS is folded to two lines (max-height,
    Coherent has no line-clamp) with a "Show full ATIS" link. A tall card scrolls instead of leaving the radar */

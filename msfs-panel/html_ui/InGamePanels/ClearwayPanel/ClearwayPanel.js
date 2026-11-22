@@ -427,9 +427,12 @@
       if (/^Connecting/.test(el("cw-vp-hint").textContent)) hint("", false, "cw-vp-hint");
     }
     var last = vp.last || {}, f = (state && state.flight) || {};
+    // type and SELCAL: from your VATSIM flight plan (matched by your CID) when there is one, else your last connection.
+    // A value filled in this way follows the flight plan when it arrives or changes; one you typed is never touched
+    var vfp = (state && state.selcal && state.selcal.vatsim_fp) || {};
     prefillInput("cw-vp-cs-in", last.callsign || (state && state.callsign));
-    prefillInput("cw-vp-type-in", last.type || f.aircraft);
-    prefillInput("cw-vp-selcal-in", last.selcal ? fmtSelcal(last.selcal) : "");
+    autoInput("cw-vp-type-in", vfp.type || last.type || f.aircraft);
+    autoInput("cw-vp-selcal-in", vfp.selcal ? fmtSelcal(vfp.selcal) : last.selcal ? fmtSelcal(last.selcal) : "");
     if (observerTick === null && state && state.vpilot) setObserverTick(!!last.observer);   // last choice
     renderVpSimbrief();
 
@@ -475,6 +478,16 @@
   function prefillInput(id, v) {
     var i = el(id);
     if (i && !i.value && v && document.activeElement !== i) i.value = v;
+  }
+  // like prefillInput, but keeps following its source while the field still holds the value it put there
+  function autoInput(id, v) {
+    var i = el(id);
+    if (!i || !v || document.activeElement === i) return;
+    var auto = i.getAttribute("data-auto");
+    if (!i.value || (auto !== null && i.value === auto)) {
+      if (i.value !== v) i.value = v;
+      i.setAttribute("data-auto", v);
+    }
   }
 
   function vpBubble(m) {
@@ -893,9 +906,20 @@
     el("cw-sc-sbuser").classList.toggle("hidden", !scUserOpen);
     prefillInput("cw-sc-sbuser-in", sc.simbrief_user);
     var ofp = sc.simbrief, box = el("cw-sc-ofp");
-    // no SELCAL in the flight plan: show the one vPilot connected to VATSIM with, if any
+    // no SELCAL in the SimBrief plan: the one in your VATSIM flight plan (by your CID), else the one vPilot connected
+    // to VATSIM with, if any
     var vpNow = state.vpilot || {}, vpSel = vpNow.connected && !vpNow.observer && vpNow.last ? fmtSelcal(vpNow.last.selcal || "") : "";
-    if (ofp) {
+    var vfp = sc.vatsim_fp, vfpSel = vfp && vfp.selcal ? fmtSelcal(vfp.selcal) : "";
+    if (!ofp && vfp) {
+      // no SimBrief plan: your VATSIM flight plan instead
+      var vroute = [vfp.departure && vfp.arrival ? vfp.departure + "-" + vfp.arrival : "", vfp.type].join(" ").trim();
+      box.innerHTML = "<div class=\"cw-sc-ofp-top\"><span class=\"cw-sc-ofp-tag\">VATSIM</span>" +
+        "<span class=\"cw-sc-ofp-cs\">" + esc(vfp.callsign || "-") + "</span><span class=\"cw-sc-ofp-route\">" + esc(vroute) + "</span></div>" +
+        (vfpSel
+          ? "<div class=\"cw-sc-ofp-code\"><b>" + esc(vfpSel) + "</b><span class=\"cw-sc-used\">In your VATSIM flight plan</span></div>"
+          : "<div class=\"cw-sc-ofp-code\"><span class=\"cw-sc-used\">No SELCAL in your VATSIM flight plan.</span></div>");
+      box.classList.remove("hidden");
+    } else if (ofp) {
       var route = [ofp.departure && ofp.arrival ? ofp.departure + "-" + ofp.arrival : "", ofp.aircraft].join(" ").trim();
       box.innerHTML = "<div class=\"cw-sc-ofp-top\"><span class=\"cw-sc-ofp-tag\">SIMBRIEF</span>" +
         "<span class=\"cw-sc-ofp-cs\">" + esc(ofp.callsign || "-") + "</span><span class=\"cw-sc-ofp-route\">" + esc(route) + "</span></div>" +
@@ -903,6 +927,8 @@
           ? "<div class=\"cw-sc-ofp-code\"><b>" + esc(ofp.selcal) + "</b><span class=\"cw-sc-used\" id=\"cw-sc-ofp-used\"></span>" +
             (isExtended(ofp.selcal) ? "" : "<span class=\"cw-mini\" data-sc-ofp=\"use\">Use in vPilot</span>") +
             "<span class=\"cw-mini\" data-sc-ofp=\"save\">Save</span></div>"
+          : vfpSel
+          ? "<div class=\"cw-sc-ofp-code\"><b>" + esc(vfpSel) + "</b><span class=\"cw-sc-used\">Not in SimBrief: the SELCAL in your VATSIM flight plan</span></div>"
           : vpSel.replace("-", "").length === 4
           ? "<div class=\"cw-sc-ofp-code\"><b>" + esc(vpSel) + "</b><span class=\"cw-sc-used\">Not in the flight plan: the SELCAL you connected to VATSIM with</span></div>"
           : "<div class=\"cw-sc-ofp-code\"><span class=\"cw-sc-used\">No SELCAL in this flight plan. Generate one below and add it in SimBrief.</span></div>");
@@ -1158,6 +1184,13 @@
     p.classList.remove("hidden");
     p.style.cssText = keep + ";position:absolute;visibility:hidden;left:0;right:0;top:0;height:auto;max-height:none;flex:none;";
     var h = p.offsetHeight;
+    // grey status lines ("Connecting...", "Connected to VATSIM", "Connected to Hoppie"...) don't make the card taller:
+    // only real messages do. They still show, and scroll with the rest
+    var sys = p.getElementsByClassName("cw-sys");
+    for (var i = 0; i < sys.length; i++) {
+      var cs = window.getComputedStyle(sys[i]);
+      h -= sys[i].offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+    }
     p.setAttribute("style", keep);
     if (wasHidden) p.classList.add("hidden");
     return h;
