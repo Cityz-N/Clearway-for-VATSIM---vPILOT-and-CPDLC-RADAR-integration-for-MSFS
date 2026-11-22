@@ -235,8 +235,12 @@ class SelcalMixin:
             # for the vPilot ATC list
             names = {str(c.get("callsign", "")).upper(): str(c.get("name") or "").strip()
                      for c in list(data.get("controllers", [])) + list(data.get("atis", []))}
+            # online ATIS stations and their text: a CPDLC ATIS request is answered from these when Hoppie isn't connected
+            atis_text = {str(a.get("callsign", "")).upper(): {"f": str(a.get("frequency") or ""),
+                                                              "lines": [str(x) for x in (a.get("text_atis") or []) if str(x).strip()]}
+                         for a in data.get("atis", [])}
             self._feed = {"ts": time.time(), "used": used, "pilots": pilots, "prefiles": prefiles, "moving": moving,
-                          "names": names, "mine": mine, "count": len(pilots) + len(prefiles)}
+                          "names": names, "mine": mine, "atis": atis_text, "count": len(pilots) + len(prefiles)}
             self._feed_error = ""
         with self.lock:
             self._bump()          # "Free / Used by" lines on every screen follow the new data

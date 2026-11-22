@@ -1,12 +1,20 @@
 # Changelog
 
+## 1.4.0
+
+- MSFS panel: new ATC list in the vPilot tab. Controllers in two columns (callsign and frequency), sorted by type, with filter chips (All, ATIS, DEL, GND, TWR, APP, DEP, CTR, FSS): a chip only shows when that type is online. The distance in nm is gone
+- MSFS panel: "Prim" and "Stby" on each controller set the frequency as the active or standby frequency of the radio you transmit on (COM1, or COM2 when only COM2 transmits), like vPilot's own option. The link lights up when that frequency is already tuned
+- MSFS panel: controller information opens full width under its row (click the callsign)
+- MSFS panel: a scrolled message list (vPilot chat, CPDLC) stays where you put it. Each time the card measured how tall to be, the list jumped back to the top
+- MSFS panel: opening the ATC list keeps the card's height (it was measured on the list instead of the messages); a long list scrolls
+
 ## 1.3.0
 
 - MSFS panel: the card has the same height on every tab (vPilot, CPDLC, SELCAL and the notepad), so switching tabs doesn't make it jump. It starts small and grows with your vPilot and CPDLC messages, up to the height of the vPilot tab with six controllers in the ATC list, and every tab follows (the Radar too); past that, lists scroll inside. Grey status lines ("Connecting...", "Connected to VATSIM", "Connected to Hoppie"...) don't make it grow
 - Radar: a new **expand** button next to the detach button switches between the compact radar (the card's size) and the big one (twice as wide, taller), remembered. In its own window it switches the window between a card-sized and the big size (the corner grip still resizes it freely)
 - MSFS panel: the SELCAL generator (callsign, codes, Generate / Save / Use in vPilot) folds away under a **Generate** header, like CPDLC's Request, closed when the panel starts. Checking a code stays visible; SimBrief opens the generator
 - MSFS panel: a glass look for the card and the peek: 75% opaque backgrounds, so the sim shows through while text and buttons stay solid, and a faint white rim instead of the outline and shadow. The Radar tab stays fully opaque
-- Radar: the info card of an aircraft, controller or airport shows its close button (×) at the top right; the frequency or callsign used to cover it
+- Radar: the info card of an aircraft, controller or airport shows its close button (×) at the top right; the frequency or callsign used to cover it. The card is a little wider so a long controller callsign and its frequency fit beside it at every display size
 - Radar: each controller and ATIS in a card can be folded to just its callsign and frequency: click its callsign line (small arrow on the left), again to unfold. Handy on a busy airport whose card covered the map
 - MSFS panel: the mouse wheel over the card, the peek, the radar window or the icon is kept by the panel (it scrolls the list under the mouse itself), to stop it reaching the cockpit, e.g. turning a knob while the camera is moving. MSFS may still route the mouse to the cockpit while the camera moves
 - MSFS panel: the LT clock shows the real local time where your aircraft is (flying in California from Paris: California time), not your PC's time. It doesn't follow the time of day set in the sim
@@ -19,6 +27,7 @@
 - TSAT clock: once your flight is activated (off blocks), the clock goes back to your usual one. Before, it kept counting up in red past the window while you taxied, until take-off
 - vPilot connect form (panel and phone): the aircraft type and SELCAL come from your VATSIM flight plan, found by your VATSIM CID (your prefile before you connect), else from your last connection. A value you typed yourself is never replaced. Clearway reads the VATSIM data at most once a minute for this, only while vPilot is open or the panel is showing
 - SELCAL tab (panel and phone): when your SimBrief plan has no SELCAL, the one in your VATSIM flight plan is shown; without SimBrief, your VATSIM flight plan (callsign, route, type, SELCAL) is shown instead
+- CPDLC: an ATIS request (Request > WX > ATIS) also works without a Hoppie connection: Clearway answers it from the VATSIM data, one reply per ATIS online for that airport (e.g. EDDF_A_ATIS and EDDF_D_ATIS), or "No ATIS online" when there's none. Connected to Hoppie, it goes through Hoppie as before
 - CPDLC: a **ROGER** button for text from ATC (panel, peek and phone). Text that needs an answer shows ROGER next to STANDBY (before, only STANDBY, so you had to type ROGER); text that needs none (e.g. "APPROVED. REPORT BACK") gets an optional ROGER, and you can still just mark it read. Logon and unit notices get none
 - MSFS panel: slim scrollbars you can drag (or click to jump) on the vPilot chat, the ATC list, the CPDLC messages, the SELCAL tab and the notepad. MSFS shows no scrollbars in panels, so only the mouse wheel worked
 - MSFS panel: vPilot action messages ("Connecting...", errors) float just above the message box instead of being cut off at the bottom of the card

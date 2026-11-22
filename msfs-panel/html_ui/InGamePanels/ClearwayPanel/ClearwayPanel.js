@@ -518,25 +518,68 @@
     if (nearBottom || !box.getAttribute("data-scrolled")) { box.scrollTop = box.scrollHeight; box.setAttribute("data-scrolled", "1"); }
   }
 
+  // ATC list (1.4.0): filter chips by type (only the types online), two columns, Prim / Stby / Chat on each.
+  // The type is the callsign's last part (LFMN_NO_APP = APP); a ramp (RMP) counts as ground
+  var ATC_TYPES = ["ATIS", "DEL", "GND", "TWR", "APP", "DEP", "CTR", "FSS"];
+  var atcFilter = "ALL";
+  function atcType(cs) {
+    var t = String(cs).toUpperCase().split("_").pop();
+    if (t === "RMP") t = "GND";
+    return ATC_TYPES.indexOf(t) >= 0 ? t : "";
+  }
+  function atcInfoHtml(c) {
+    var body = c.info && c.info.length ? esc(c.info.join("\n"))
+      : (c.info_pending || !c.info ? "Requesting information..." : "No controller information.");
+    // top right: the controller's name as they show it on VATSIM (full name, first name or CID)
+    return "<div class=\"cw-atc-info wide\"><span class=\"cw-atc-who\">" + esc(c.callsign) + (c.name ? " · " + esc(c.name) : "") + "</span>" + body + "</div>";
+  }
   function renderAtc(vp) {
-    var list = vp.controllers || [];
-    el("cw-vp-atc").innerHTML = list.length ? list.map(function (c) {
-      var open = !!atcOpenRows[c.callsign];
-      var info = "";
-      if (open) {
-        var body = c.info && c.info.length ? esc(c.info.join("\n"))
-          : (c.info_pending || !c.info ? "Requesting information..." : "No controller information.");
-        // top right: the controller's name as they show it on VATSIM (full name, first name or CID)
-        info = "<div class=\"cw-atc-info\">" + (c.name ? "<span class=\"cw-atc-who\">" + esc(c.name) + "</span>" : "") + body + "</div>";
-      }
-      return "<div class=\"cw-atc-item" + (open ? " open" : "") + "\">" +
-        "<div class=\"cw-atc-row\" data-atc=\"" + esc(c.callsign) + "\" title=\"Show controller information\">" +
-        "<span class=\"cw-atc-arrow\"></span>" +
-        "<span class=\"cw-atc-cs\">" + esc(c.callsign) + "</span><span class=\"cw-freq\">" + esc(c.frequency) + "</span>" +
-        "<span class=\"cw-atc-d\">" + (c.distance !== undefined ? c.distance + " nm" : "") + "</span>" +
-        "<span class=\"cw-link\" data-chatwith=\"" + esc(c.callsign) + "\">Chat</span></div>" + info + "</div>";
-    }).join("")
-      : "<div class=\"cw-empty\">" + (vp.connected ? "No controllers in range." : "Connect vPilot to see nearby controllers.") + "</div>";
+    var list = (vp.controllers || []).slice();
+    if (!list.length) {
+      el("cw-vp-atc").innerHTML = "<div class=\"cw-empty\">" + (vp.connected ? "No controllers in range." : "Connect vPilot to see nearby controllers.") + "</div>";
+      return;
+    }
+    var rank = function (c) { var i = ATC_TYPES.indexOf(atcType(c.callsign)); return i < 0 ? 99 : i; };
+    list.sort(function (a, b) { return rank(a) - rank(b) || (a.callsign < b.callsign ? -1 : a.callsign > b.callsign ? 1 : 0); });
+    var online = {};
+    list.forEach(function (c) { var t = atcType(c.callsign); if (t) online[t] = (online[t] || 0) + 1; });
+    if (atcFilter !== "ALL" && !online[atcFilter]) atcFilter = "ALL";      // that type went offline
+    var html = "<div class=\"cw-atc-filters\"><div class=\"cw-atc-f" + (atcFilter === "ALL" ? " on" : "") + "\" data-atcf=\"ALL\">All</div>";
+    ATC_TYPES.forEach(function (t) {
+      if (online[t]) html += "<div class=\"cw-atc-f" + (atcFilter === t ? " on" : "") + "\" data-atcf=\"" + t + "\">" + t + "</div>";
+    });
+    html += "</div><div class=\"cw-atc-grid\">";
+    var shown = list.filter(function (c) { return atcFilter === "ALL" || atcType(c.callsign) === atcFilter; });
+    var c1 = com || {}, txCom2 = !!(c1.com2_tx && !c1.com1_tx);
+    var actF = txCom2 ? c1.com2 : c1.com1, stbyF = txCom2 ? c1.com2_stby : c1.com1_stby;
+    for (var i = 0; i < shown.length; i += 2) {
+      var pair = shown.slice(i, i + 2), infos = "";
+      pair.forEach(function (c) {
+        var open = !!atcOpenRows[c.callsign], f = String(c.frequency || "");
+        var isAct = f && actF === Number(f).toFixed(3), isStby = f && stbyF === Number(f).toFixed(3);
+        html += "<div class=\"cw-atc-cell" + (open ? " open" : "") + "\">" +
+          "<div class=\"cw-atc-top\" data-atc=\"" + esc(c.callsign) + "\" title=\"Show controller information\">" +
+          "<span class=\"cw-atc-cs\">" + esc(c.callsign) + "</span><span class=\"cw-atc-arrow\"></span></div>" +
+          "<div class=\"cw-atc-bot\"><span class=\"cw-freq\">" + esc(f) + "</span>" +
+          "<span class=\"cw-atc-acts\">" +
+          "<span class=\"cw-link cw-tune" + (isAct ? " set" : "") + "\" data-tune=\"pri\" data-f=\"" + esc(f) + "\" title=\"Set as active frequency\">Prim</span>" +
+          "<span class=\"cw-link cw-tune" + (isStby ? " set" : "") + "\" data-tune=\"stby\" data-f=\"" + esc(f) + "\" title=\"Set as standby frequency\">Stby</span>" +
+          "<span class=\"cw-link\" data-chatwith=\"" + esc(c.callsign) + "\">Chat</span></span></div></div>";
+        if (open) infos += atcInfoHtml(c);
+      });
+      html += infos;      // the information of an open controller: full width, under its row
+    }
+    el("cw-vp-atc").innerHTML = html + "</div>";
+  }
+
+  // Tune the radio you transmit on (COM1, or COM2 when only COM2 transmits): active or standby frequency
+  function tuneCom(which, freq) {
+    var hz = Math.round(parseFloat(freq) * 1000) * 1000;
+    if (!hz || typeof SimVar === "undefined") return;
+    var two = !!(com && com.com2_tx && !com.com1_tx);
+    var ev = which === "pri" ? (two ? "K:COM2_RADIO_SET_HZ" : "K:COM_RADIO_SET_HZ") : (two ? "K:COM2_STBY_RADIO_SET_HZ" : "K:COM_STBY_RADIO_SET_HZ");
+    try { SimVar.SetSimVarValue(ev, "Hz", hz); } catch (e) { return; }
+    setTimeout(function () { readCom(); renderVpilot(); }, 300);
   }
 
   // expand/collapse a controller; fetch their information when it's missing or older than 5 minutes
@@ -1181,6 +1224,10 @@
   function naturalHeight(p) {
     // how tall a tab would be with all its content: laid out on its own for a moment, invisibly
     var wasHidden = p.classList.contains("hidden"), keep = p.getAttribute("style") || "";
+    // laid out at full height, the message lists have nothing to scroll and lose their position (the list
+    // jumped back to the top): remember every scrolled box and put it back afterwards
+    var all = p.getElementsByTagName("*"), scrolled = [];
+    for (var k = 0; k < all.length; k++) if (all[k].scrollTop > 0) scrolled.push([all[k], all[k].scrollTop]);
     p.classList.remove("hidden");
     p.style.cssText = keep + ";position:absolute;visibility:hidden;left:0;right:0;top:0;height:auto;max-height:none;flex:none;";
     var h = p.offsetHeight;
@@ -1193,6 +1240,7 @@
     }
     p.setAttribute("style", keep);
     if (wasHidden) p.classList.add("hidden");
+    for (var s = 0; s < scrolled.length; s++) scrolled[s][0].scrollTop = scrolled[s][1];
     return h;
   }
   function sizeCard() {
@@ -1200,7 +1248,12 @@
     if (!c || c.classList.contains("hidden")) return;
     if (c.classList.contains("radar")) { c.style.height = ""; return; }
     var em = parseFloat(window.getComputedStyle(c).fontSize) || 14;
+    // the height follows the messages: with the ATC list open (it takes the chat's place), measure the chat anyway,
+    // so opening the list doesn't change the card's height (a long list scrolls inside)
+    var chat = el("cw-vp-chat"), atc = el("cw-vp-atc"), atcTop = atc.scrollTop;
+    if (atcOpen) { chat.classList.remove("hidden"); atc.classList.add("hidden"); }
     var need = Math.max(naturalHeight(el("cw-pane-vpilot")), naturalHeight(el("cw-pane-cpdlc")));
+    if (atcOpen) { chat.classList.add("hidden"); atc.classList.remove("hidden"); atc.scrollTop = atcTop; }
     var h = (el("cw-head").offsetHeight + need + 2) / em;   // + the card's border
     h = Math.max(CARD_MIN, Math.min(CARD_MAX, h));
     var v = h.toFixed(2) + "em";
@@ -2214,6 +2267,10 @@
     el("cw-vp-atc").addEventListener("click", function (e) {
       var c = pick(e.target, "data-chatwith");
       if (c) return openChat(c);
+      var tune = pick(e.target, "data-tune");
+      if (tune) return tuneCom(tune, pick(e.target, "data-f"));
+      var f = pick(e.target, "data-atcf");
+      if (f) { atcFilter = f; renderVpilot(); return placeCard(); }
       var row = pick(e.target, "data-atc");
       if (row) toggleAtc(row);
     });

@@ -79,7 +79,7 @@
 
 #rd-card {
   /* left: set by radar.js just right of the button column */
-  position: absolute; left: 5em; bottom: 2.4em; min-width: 12.5em; max-width: 16.5em; padding: 0.4em 0.6em;
+  position: absolute; left: 5em; bottom: 2.4em; min-width: 12.5em; max-width: 18.5em; padding: 0.4em 0.6em;   /* room for a long callsign + frequency + the X */
   border-radius: 0.6em; background: rgba(14, 19, 26, 0.94); border: 1px solid #2a3442; line-height: 1.25;
   max-height: 55%; overflow-y: auto; font-size: 0.7em;
 }
@@ -110,7 +110,9 @@
 #rd-card .x i { position: absolute; left: 50%; top: 50%; width: 0.9em; height: 0.13em; margin: -0.065em 0 0 -0.45em; background: #a9b6c6; }
 #rd-card .x:hover i { background: #e6e9f0; }
 /* the card's first line (callsign / frequency) leaves room for the close button */
-#rd-card .first { padding-right: 1.5em; }
+/* the X spans 0.35 to 1.75em from the right edge. (.ctl.first too: the controller block's own padding rule would
+   otherwise reset it to 0, which is how a controller's frequency ended up under the X) */
+#rd-card .first, #rd-card .ctl.first { padding-right: 2em; }
 #rd-card .x i.a { transform: rotate(45deg); }
 #rd-card .x i.b { transform: rotate(-45deg); }
 

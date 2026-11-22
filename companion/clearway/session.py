@@ -667,15 +667,37 @@ class Session(VpilotMixin, SelcalMixin, TsatMixin):
                     self._bump()
 
     def inforeq(self, what: str, icao: str) -> None:
-        self._require_online()
         what = what.strip().lower()
         icao = icao.strip().upper()
         if what not in ("metar", "taf", "shorttaf", "vatatis"):
             raise ValueError("Unknown request type.")
         if len(icao) != 4:
             raise ValueError("Enter a 4-letter ICAO code.")
+        if what == "vatatis" and self.status != "online":
+            return self._vatsim_atis(icao)        # not connected to Hoppie: the ATIS straight from the VATSIM data
+        self._require_online()
         label = "ATIS" if what == "vatatis" else what.upper()
         self._send_logged("SERVER", "inforeq", f"{what} {icao}", "info", f"{label} {icao}")
+
+    def _vatsim_atis(self, icao: str) -> None:
+        """An ATIS request without a Hoppie connection: answered from the VATSIM data, one reply per ATIS online for that
+        airport (EGLL_ATIS, or EDDF_A_ATIS and EDDF_D_ATIS)."""
+        feed = self._vatsim_feed(max_age=60)
+        if not feed:
+            raise ValueError("Not connected to Hoppie, and the VATSIM data isn't reachable.")
+        found = sorted((cs, a) for cs, a in (feed.get("atis") or {}).items()
+                       if cs.startswith(icao + "_") and cs.endswith("_ATIS") and a.get("lines"))
+        req = self._add("out", "info", "VATSIM", f"ATIS {icao}", status="answered" if found else "none")
+        if not found:
+            self._system(f"No ATIS online for {icao} on VATSIM.")
+            return
+        with self.lock:
+            req["reply"] = ", ".join(cs for cs, _ in found)
+            self._bump()
+        for cs, a in found:
+            msg = self._add("in", "info", cs, " ".join(a["lines"]) + (f" ({a['f']})" if a.get("f") else ""),
+                            linked=req["id"])
+            self._notify(msg)
 
     # ------------------------------------------------------------ notepad
     def _notes_path(self):
