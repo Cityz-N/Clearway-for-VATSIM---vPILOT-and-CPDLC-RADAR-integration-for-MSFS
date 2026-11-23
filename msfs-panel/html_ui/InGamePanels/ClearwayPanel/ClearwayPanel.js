@@ -36,6 +36,7 @@
   var ackPending = {};
   var atcOpenRows = {};    // controllers whose information is expanded
   var com = null;          // COM radios read from the sim
+  var comPower = null;     // { 1: bool, 2: bool }: each radio has power (sim only)
   var xpdr = null;         // the aircraft's transponder state in the sim (see simTransponder)
   var lastModecN = null, lastIdentN = null;   // Clearway's Mode C / ident request counters (see renderVpilot)
   var comSentAt = 0, comSentKey = "";
@@ -154,6 +155,10 @@
         com2: f("COM ACTIVE FREQUENCY:2"), com2_stby: f("COM STANDBY FREQUENCY:2"), com2_tx: b("COM TRANSMIT:2"), com2_rx: b("COM RECEIVE:2")
       };
       xpdr = SimVar.GetSimVarValue("TRANSPONDER STATE:1", "Enum");
+      // radio power: COM STATUS is 0 when the radio works (2 = no electricity, 3 = failed, 1 = not fitted). Kept out
+      // of `com` (what Clearway is sent); an aircraft that doesn't report it counts as powered
+      var st = function (n) { var v = SimVar.GetSimVarValue("COM STATUS:" + n, "Enum"); return typeof v !== "number" || isNaN(v) || v === 0; };
+      comPower = { 1: st(1), 2: st(2) };
     } catch (e) { return; }
     var key = JSON.stringify(com), now = Date.now();
     if (reachable && (key !== comSentKey || now - comSentAt > 5000)) {   // share with Clearway (phone)
@@ -187,6 +192,7 @@
 
 
   function updateFreqChip() {
+    updateRadioBtn();
     var chip = document.querySelector('.cw-chip-tab[data-chat="FREQ"] .cw-chip-freq');
     if (chip) chip.textContent = txFreq() ? " " + txFreq() : "";
     var pop = el("cw-com-pop");
@@ -198,6 +204,59 @@
         "<span class=\"cw-com-tx rx" + (com["com" + n + "_rx"] ? "" : " off") + "\">RX</span></div>";
     };
     pop.innerHTML = row(1) + row(2);
+  }
+  // the radios popup under `anchor` (frequency tab or header icon), kept inside the card
+  function showComPop(anchor) {
+    updateFreqChip();
+    var pop = el("cw-com-pop"), card = el("cw-card");
+    pop.classList.remove("hidden");
+    var c = card.getBoundingClientRect(), a = anchor.getBoundingClientRect();
+    var maxLeft = card.clientWidth - pop.offsetWidth - 6;
+    pop.style.left = Math.max(6, Math.min(a.left - c.left, maxLeft)) + "px";
+    pop.style.top = (a.bottom - c.top + 4) + "px";
+  }
+
+  // The radio icon in the header: lit (teal) when a controller is on the frequency you transmit on, amber for a few
+  // seconds when text arrives on that frequency. vPilot doesn't tell plugins about voice (push-to-talk or someone
+  // talking), so only these two can be shown. A class change on the 1 s radio check: no measurable cost
+  function updateRadioBtn() {
+    var b = el("cw-radio-btn");
+    if (!b) return;
+    var f = txFreq(), vp = (state && state.vpilot) || {}, tuned = false, who = "";
+    // which radio you transmit on (COM2 only when COM2 alone transmits, as txFreq) and whether it has power
+    var c = com || {}, two = !!(c.com2_tx && !c.com1_tx);
+    var off = !!(comPower && !comPower[two ? 2 : 1]);
+    b.classList.toggle("c2", two);
+    var fq = document.querySelector('.cw-chip-tab[data-chat="FREQ"]');
+    if (fq) { fq.classList.toggle("c2", two); fq.classList.toggle("off", off); }
+    b.classList.toggle("off", off);
+    if (off) {
+      b.classList.remove("tuned"); b.classList.remove("rx"); b.classList.remove("unicom"); b.classList.remove("guard");
+      b.title = "COM" + (two ? 2 : 1) + " has no power - hover for COM1 / COM2";
+      return;
+    }
+    if (f && vp.connected) {
+      (vp.controllers || []).forEach(function (c) {
+        if (c.frequency && Number(c.frequency).toFixed(3) === Number(f).toFixed(3)) { tuned = true; who = who || c.callsign; }
+      });
+    }
+    var rx = false, msgs = state && state.messages;
+    if (f && msgs) {
+      for (var i = msgs.length - 1; i >= 0 && i > msgs.length - 15; i--) {
+        var m = msgs[i];
+        if (m.kind !== "radio" || m.dir !== "in") continue;
+        if (Date.now() - m.ts < 4000) rx = true;          // message times are in ms
+        break;
+      }
+    }
+    // always-open frequencies: UNICOM 122.800 (blue) and guard 121.500 (orange), when no controller is on them
+    var ff = f ? Number(f).toFixed(3) : "", unicom = !tuned && ff === "122.800", guard = !tuned && ff === "121.500";
+    b.classList.toggle("tuned", tuned && !rx);
+    b.classList.toggle("unicom", unicom && !rx);
+    b.classList.toggle("guard", guard && !rx);
+    b.classList.toggle("rx", rx);
+    b.title = (f ? "Transmitting on " + f + " (COM" + (two ? 2 : 1) + ")" : "Radios") + (tuned ? ", " + who : unicom ? ", Unicom" : guard ? ", Guard" : "") +
+      " - hover for COM1 / COM2";
   }
 
   function sendPosition() {
@@ -220,6 +279,9 @@
   }
   var TICK_ICON = "<svg class=\"cw-ti\" viewBox=\"0 0 12 12\"><path d=\"M2.5 6.4l2.4 2.4 4.6-5\"/></svg>";
   var X_ICON = "<svg class=\"cw-xi\" viewBox=\"0 0 10 10\"><path d=\"M2 2l6 6M8 2l-6 6\"/></svg>";
+  // the frequency chat's tab: a radio (a dot sending waves both ways) instead of the word FREQ, to save room
+  var RADIO_ICON = "<svg class=\"cw-radio-i\" viewBox=\"0 0 20 14\"><circle cx=\"10\" cy=\"7\" r=\"1.7\"/>" +
+    "<path d=\"M6.6 3.6a4.8 4.8 0 0 0 0 6.8M13.4 3.6a4.8 4.8 0 0 1 0 6.8M3.8 1.2a8.4 8.4 0 0 0 0 11.6M16.2 1.2a8.4 8.4 0 0 1 0 11.6\"/></svg>";
   function esc(s) {
     return plain(s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c];
@@ -443,15 +505,19 @@
     var n = vp.controllers ? vp.controllers.length : 0;
     html += "<div class=\"cw-chip-tab atc" + (atcOpen ? " on" : "") + (n ? " has" : "") + "\" data-atc-toggle=\"1\">ATC" +
       (n ? "<span class=\"cw-atc-n\">" + n + "</span>" : "") + "</div>";
+    // with the ATC list open, its type filters sit on this row, next to ATC (the private chats come back when it closes)
+    if (atcOpen) html += atcFiltersHtml(vp.controllers || []);
     var chip = function (c) {
       return "<div class=\"cw-chip-tab" + (c.name === "FREQ" ? " freq" : "") + (c.name === activeChat && !atcOpen ? " on" : "") + "\" data-chat=\"" + esc(c.name) + "\">" +
-        (c.name === "FREQ" ? "FREQ<span class=\"cw-chip-freq\">" + (txFreq() ? " " + txFreq() : "") + "</span>" : esc(c.name)) +
+        (c.name === "FREQ" ? "<span class=\"cw-radio-wrap\">" + RADIO_ICON + "<span class=\"cw-c2\">2</span></span><span class=\"cw-chip-freq\">" + (txFreq() ? " " + txFreq() : "") + "</span>" : esc(c.name)) +
         (c.unread && (c.name !== activeChat || atcOpen) ? "<span class=\"cw-tdot vp\">" + c.unread + "</span>" : "") +
         (c.name !== "FREQ" ? "<span class=\"cw-chip-x\" data-closechat=\"" + esc(c.name) + "\">" + X_ICON + "</span>" : "") + "</div>";
     };
-    for (var j = 0; j < chats.length; j++) if (chats[j].name !== "FREQ") html += chip(chats[j]);
+    for (var j = 0; j < chats.length; j++) if (chats[j].name !== "FREQ" && !atcOpen) html += chip(chats[j]);
     for (var j2 = 0; j2 < chats.length; j2++) if (chats[j2].name === "FREQ") html += chip(chats[j2]);
     el("cw-vp-chips").innerHTML = html;
+    updateRadioBtn();           // COM2 / no-power marks on the new frequency tab
+    fitChips();
 
     el("cw-vp-chat").classList.toggle("hidden", atcOpen);
     el("cw-vp-atc").classList.toggle("hidden", !atcOpen);
@@ -531,7 +597,40 @@
     var body = c.info && c.info.length ? esc(c.info.join("\n"))
       : (c.info_pending || !c.info ? "Requesting information..." : "No controller information.");
     // top right: the controller's name as they show it on VATSIM (full name, first name or CID)
-    return "<div class=\"cw-atc-info wide\"><span class=\"cw-atc-who\">" + esc(c.callsign) + (c.name ? " · " + esc(c.name) : "") + "</span>" + body + "</div>";
+    return "<div class=\"cw-atc-info wide\" data-for=\"" + esc(c.callsign) + "\"><span class=\"cw-atc-who\">" + esc(c.callsign) + (c.name ? " · " + esc(c.name) : "") + "</span>" + body + "</div>";
+  }
+  // The chip row with the ATC list open (ATC, its filters, the frequency tab): when it doesn't fit on one line, the
+  // frequency tab drops its frequency and shows only the radio icon
+  function fitChips() {
+    var row = el("cw-vp-chips"), fq = row.querySelector('.cw-chip-tab[data-chat="FREQ"]');
+    if (!fq) return;
+    fq.classList.remove("compact");
+    var first = row.firstChild;
+    if (atcOpen && first && fq.offsetTop > first.offsetTop + first.offsetHeight / 2) fq.classList.add("compact");
+  }
+  // the filter chips (on the vPilot chip row, next to ATC): All, then only the types online. A filter whose type went
+  // offline falls back to All
+  function atcFiltersHtml(list) {
+    var online = {};
+    list.forEach(function (c) { var t = atcType(c.callsign); if (t) online[t] = (online[t] || 0) + 1; });
+    if (atcFilter !== "ALL" && !online[atcFilter]) atcFilter = "ALL";
+    if (!list.length) return "";
+    var html = "<div class=\"cw-atc-f" + (atcFilter === "ALL" ? " on" : "") + "\" data-atcf=\"ALL\">All</div>";
+    ATC_TYPES.forEach(function (t) {
+      if (online[t]) html += "<div class=\"cw-atc-f" + (atcFilter === t ? " on" : "") + "\" data-atcf=\"" + t + "\">" + t + "</div>";
+    });
+    return html;
+  }
+  // after a controller is opened: scroll its information into view (again when it arrives, for a few seconds)
+  var atcReveal = { cs: "", until: 0 };
+  function revealAtcInfo() {
+    if (!atcReveal.cs || Date.now() > atcReveal.until || !atcOpenRows[atcReveal.cs]) return;
+    var box = el("cw-vp-atc"), info = box.querySelector('.cw-atc-info[data-for="' + atcReveal.cs + '"]');
+    var cell = box.querySelector('.cw-atc-top[data-atc="' + atcReveal.cs + '"]');
+    if (!info || !cell) return;
+    var b = box.getBoundingClientRect(), top = cell.getBoundingClientRect().top - b.top, bottom = info.getBoundingClientRect().bottom - b.top;
+    if (bottom > box.clientHeight) box.scrollTop += Math.min(bottom - box.clientHeight + 4, top);   // never past the cell
+    else if (top < 0) box.scrollTop += top;
   }
   function renderAtc(vp) {
     var list = (vp.controllers || []).slice();
@@ -541,16 +640,14 @@
     }
     var rank = function (c) { var i = ATC_TYPES.indexOf(atcType(c.callsign)); return i < 0 ? 99 : i; };
     list.sort(function (a, b) { return rank(a) - rank(b) || (a.callsign < b.callsign ? -1 : a.callsign > b.callsign ? 1 : 0); });
-    var online = {};
-    list.forEach(function (c) { var t = atcType(c.callsign); if (t) online[t] = (online[t] || 0) + 1; });
-    if (atcFilter !== "ALL" && !online[atcFilter]) atcFilter = "ALL";      // that type went offline
-    var html = "<div class=\"cw-atc-filters\"><div class=\"cw-atc-f" + (atcFilter === "ALL" ? " on" : "") + "\" data-atcf=\"ALL\">All</div>";
-    ATC_TYPES.forEach(function (t) {
-      if (online[t]) html += "<div class=\"cw-atc-f" + (atcFilter === t ? " on" : "") + "\" data-atcf=\"" + t + "\">" + t + "</div>";
-    });
-    html += "</div><div class=\"cw-atc-grid\">";
+    var html = "<div class=\"cw-atc-grid\">";
     var shown = list.filter(function (c) { return atcFilter === "ALL" || atcType(c.callsign) === atcFilter; });
-    var c1 = com || {}, txCom2 = !!(c1.com2_tx && !c1.com1_tx);
+    var c1 = com || {}, vc = state && state.vpilot && state.vpilot.com;
+    if (!com && vc && vc.com1 && vc.com2) {      // outside the sim: the radios Clearway knows (as txFreq)
+      c1 = { com1: vc.com1.active, com1_stby: vc.com1.standby, com1_tx: vc.com1.tx,
+             com2: vc.com2.active, com2_stby: vc.com2.standby, com2_tx: vc.com2.tx };
+    }
+    var txCom2 = !!(c1.com2_tx && !c1.com1_tx);
     var actF = txCom2 ? c1.com2 : c1.com1, stbyF = txCom2 ? c1.com2_stby : c1.com1_stby;
     for (var i = 0; i < shown.length; i += 2) {
       var pair = shown.slice(i, i + 2), infos = "";
@@ -589,6 +686,7 @@
       var list = (state && state.vpilot && state.vpilot.controllers) || [], c = null;
       for (var i = 0; i < list.length; i++) if (list[i].callsign === callsign) c = list[i];
       if (!c || !c.info || c.info_age === null || c.info_age > 300) act("vp/atis", { callsign: callsign, quiet: true }, null);
+      atcReveal = { cs: callsign, until: Date.now() + 4000 };
     }
     renderVpilot();
     placeCard();
@@ -1254,10 +1352,13 @@
     if (atcOpen) { chat.classList.remove("hidden"); atc.classList.add("hidden"); }
     var need = Math.max(naturalHeight(el("cw-pane-vpilot")), naturalHeight(el("cw-pane-cpdlc")));
     if (atcOpen) { chat.classList.add("hidden"); atc.classList.remove("hidden"); atc.scrollTop = atcTop; }
+    // a controller's information open in the list: the card grows to show the whole list with it (up to the maximum)
+    if (atcOpen && atc.querySelector(".cw-atc-info")) need = Math.max(need, naturalHeight(el("cw-pane-vpilot")));
     var h = (el("cw-head").offsetHeight + need + 2) / em;   // + the card's border
     h = Math.max(CARD_MIN, Math.min(CARD_MAX, h));
     var v = h.toFixed(2) + "em";
     if (c.style.height !== v) c.style.height = v;
+    if (atcOpen) revealAtcInfo();
   }
 
   function placeCard() {
@@ -1473,10 +1574,32 @@
       }
       if (t && t.nodeType === 1) {
         var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? t.clientHeight : 1);
-        t.scrollTop += dy;
+        // the sim's wheel steps are large: one notch moves about two and a half lines, glided over a few frames
+        var em = parseFloat(window.getComputedStyle(t).fontSize) || 14, notch = 3.2 * em;
+        if (Math.abs(dy) > notch) dy = dy > 0 ? notch : -notch;
+        smoothScroll(t, dy);
       }
       e.preventDefault();
     }, false);
+  }
+  // glide a box's scroll towards a target: each wheel notch adds to the target, the box eases there
+  var raf = window.requestAnimationFrame ? function (f) { window.requestAnimationFrame(f); } : function (f) { setTimeout(f, 16); };
+  function smoothScroll(t, dy) {
+    var a = t.cwGlide || (t.cwGlide = { active: false, target: 0 });
+    var max = Math.max(0, t.scrollHeight - t.clientHeight);
+    if (!a.active) a.target = t.scrollTop;
+    a.target = Math.max(0, Math.min(max, a.target + dy));
+    if (a.active) return;
+    a.active = true;
+    (function step() {
+      var cur = t.scrollTop, d = a.target - cur;
+      if (Math.abs(d) < 2) { t.scrollTop = a.target; a.active = false; return; }
+      var move = d * 0.3;
+      if (Math.abs(move) < 1.5) move = d > 0 ? 1.5 : -1.5;
+      t.scrollTop = cur + move;
+      if (t.scrollTop === cur) { a.active = false; return; }    // at an end (or the box can't move)
+      raf(step);
+    })();
   }
   function setupWheel() {
     ["cw-card", "cw-peek", "cw-radar-win", "cw-bubble"].forEach(function (id) { swallowWheel(el(id)); });
@@ -1743,6 +1866,7 @@
 
   function updateClock() {
     updateTsatRing();
+    if (expanded) updateRadioBtn();          // the header radio icon (its amber "new text" glow ends after 4 s)
     var text, d = new Date(), extra = "", c = el("cw-clock"), t = tsatNow();
     if (clockMode === "tsat" && !t) clockMode = "utc";
     var win = fmtHm(t ? t.tsat_ms - 300000 : 0) + "-" + fmtHm(t ? t.tsat_ms + 360000 : 0) + "z";
@@ -2257,6 +2381,8 @@
       var t = e.target;
       var x = pick(t, "data-closechat");
       if (x) return closeChat(x);
+      var f = pick(t, "data-atcf");
+      if (f) { atcFilter = f; el("cw-vp-atc").scrollTop = 0; renderVpilot(); return placeCard(); }
       var chip = up(t, ".cw-chip-tab");
       if (!chip) return;
       if (attr(chip, "data-atc-toggle")) { atcOpen = !atcOpen; lastChatKey = ""; renderVpilot(); return placeCard(); }
@@ -2371,20 +2497,17 @@
     setInterval(sendPosition, POSITION_MS);
     setInterval(readCom, COM_MS);
     readCom();
-    // hover the FREQ tab to see both radios
+    // hover the frequency tab, or the radio icon in the header (any tab), to see both radios
     el("cw-vp-chips").addEventListener("mouseover", function (e) {
       var chip = up(e.target, '.cw-chip-tab[data-chat="FREQ"]');
-      if (!chip) return;
-      updateFreqChip();
-      var pop = el("cw-com-pop"), card = el("cw-card");
-      pop.classList.remove("hidden");
-      // under the chip, kept inside the card (the FREQ chip can sit at the right edge)
-      var maxLeft = pop.parentNode.offsetWidth - pop.offsetWidth - 6;
-      pop.style.left = Math.max(6, Math.min(chip.offsetLeft, maxLeft)) + "px";
-      pop.style.top = (chip.offsetTop + chip.offsetHeight + 4) + "px";
+      if (chip) showComPop(chip);
     });
     el("cw-vp-chips").addEventListener("mouseout", function (e) {
       if (!up(e.relatedTarget, '.cw-chip-tab[data-chat="FREQ"]')) el("cw-com-pop").classList.add("hidden");
+    });
+    el("cw-radio-btn").addEventListener("mouseover", function () { showComPop(el("cw-radio-btn")); });
+    el("cw-radio-btn").addEventListener("mouseout", function (e) {
+      if (!up(e.relatedTarget, "#cw-radio-btn")) el("cw-com-pop").classList.add("hidden");
     });
   }
 

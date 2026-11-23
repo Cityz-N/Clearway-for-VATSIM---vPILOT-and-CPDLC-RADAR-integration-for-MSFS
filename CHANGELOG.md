@@ -4,7 +4,19 @@
 
 - MSFS panel: new ATC list in the vPilot tab. Controllers in two columns (callsign and frequency), sorted by type, with filter chips (All, ATIS, DEL, GND, TWR, APP, DEP, CTR, FSS): a chip only shows when that type is online. The distance in nm is gone
 - MSFS panel: "Prim" and "Stby" on each controller set the frequency as the active or standby frequency of the radio you transmit on (COM1, or COM2 when only COM2 transmits), like vPilot's own option. The link lights up when that frequency is already tuned
-- MSFS panel: controller information opens full width under its row (click the callsign)
+- MSFS panel: controller information opens full width under its row (click the callsign). The card grows to show it (up to its maximum height) and scrolls it into view
+- MSFS panel: the type filters sit on the chip row next to ATC, so they stay in place while the list scrolls (the private chats come back when the list closes). When the row is full, the frequency tab shows only its radio icon
+- MSFS panel: the frequency chat's tab shows a radio icon instead of the word FREQ (shorter)
+- MSFS panel: a radio icon in the card's header, next to the notepad: hover it for COM1 / COM2 from any tab. It glows teal when a controller is on the frequency you transmit on, blue on Unicom (122.800), orange on Guard (121.500), amber for a few seconds when text arrives on it
+- MSFS panel: the header icons have no box behind them any more (hover, muted): the icon itself brightens or glows. They're a little narrower, so the four tabs with their counters still fit next to the clock
+- Docs: the how-to images and the hero show the 1.4.0 panel (radio icon, ATC list, Radar expand button)
+- MSFS panel: transmitting on COM2 shows a small "2" on both radio icons. When the radio you transmit on has no power (the sim's COM STATUS), both icons and the frequency are dimmed
+- MSFS panel: the COM1 / COM2 popup is solid instead of see-through, so it's easy to read
+- MSFS panel: hovering the icon shows your callsign under it in every state, also with the card open
+- MSFS panel: the controller whose information is open in the ATC list is tinted and outlined, so it stands out
+- MSFS panel, Black theme: the icon (hovered or card open) is black and light grey instead of blue, the main buttons (Send, Save...) black with light grey text, and a focused box gets a light grey outline
+- MSFS panel, Light theme: toned down (a soft grey-blue instead of near white)
+- MSFS panel: the mouse wheel scrolls smoothly, about two and a half lines a notch, instead of jumping by blocks
 - MSFS panel: a scrolled message list (vPilot chat, CPDLC) stays where you put it. Each time the card measured how tall to be, the list jumped back to the top
 - MSFS panel: opening the ATC list keeps the card's height (it was measured on the list instead of the messages); a long list scrolls
 

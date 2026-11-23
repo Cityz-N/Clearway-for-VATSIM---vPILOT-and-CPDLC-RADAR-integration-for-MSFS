@@ -56,6 +56,8 @@
 
         <!-- expanded card -->
         <div id="cw-card" class="hidden">
+          <!-- both radios, shown while hovering the frequency tab or the radio icon in the header -->
+          <div class="cw-com-pop hidden" id="cw-com-pop"></div>
           <div class="cw-head" id="cw-head">
             <div class="cw-tabs">
               <div class="cw-tab" data-tab="vpilot">vPilot<span class="cw-tdot vp hidden" id="cw-tdot-vp"></span></div>
@@ -71,6 +73,11 @@
             <!-- rotation lock: a circular arrow around a small padlock (open / closed) -->
             <div class="cw-icon-btn" id="cw-lock" title="Lock where the card opens">
               <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 3.5v4.2h-4.2"/><rect x="9" y="11.5" width="6" height="4.8" rx="1"/><path class="cw-shackle-open" d="M10.5 11.5V10a1.5 1.5 0 0 1 2.9-.6"/><path class="cw-shackle-closed" d="M10.5 11.5V10a1.5 1.5 0 0 1 3 0v1.5"/></svg>
+            </div>
+            <!-- radios: hover for COM1 / COM2 (any tab). Lit when a controller is on your frequency, amber on new frequency text -->
+            <div class="cw-icon-btn cw-radio-btn" id="cw-radio-btn">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.9"/><path d="M8.4 8.4a5.1 5.1 0 0 0 0 7.2M15.6 8.4a5.1 5.1 0 0 1 0 7.2M5.4 5.4a9.3 9.3 0 0 0 0 13.2M18.6 5.4a9.3 9.3 0 0 1 0 13.2"/></svg>
+              <span class="cw-c2">2</span>
             </div>
             <div class="cw-icon-btn" id="cw-notes-btn" title="Notepad">
               <svg viewBox="0 0 24 24"><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5M8.5 13h7M8.5 16.5h4.5"/></svg>
@@ -114,7 +121,6 @@
               <div class="cw-btn primary full" id="cw-vp-connect-go">Connect to VATSIM</div>
             </div>
             <div class="cw-chips" id="cw-vp-chips"></div>
-            <div class="cw-com-pop hidden" id="cw-com-pop"></div>
             <div class="cw-list cw-chat" id="cw-vp-chat"></div>
             <div class="cw-list hidden" id="cw-vp-atc"></div>
             <div class="cw-compose">
