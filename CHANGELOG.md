@@ -9,6 +9,7 @@
 - MSFS panel: the frequency chat's tab shows a radio icon instead of the word FREQ (shorter)
 - MSFS panel: a radio icon in the card's header, next to the notepad: hover it for COM1 / COM2 from any tab. It glows teal when a controller is on the frequency you transmit on, blue on Unicom (122.800), orange on Guard (121.500), amber for a few seconds when text arrives on it
 - MSFS panel: the header icons have no box behind them any more (hover, muted): the icon itself brightens or glows. They're a little narrower, so the four tabs with their counters still fit next to the clock
+- MSFS panel: readability pass on all three themes. Every text was measured over both a bright and a dark scene behind the see-through card. Dark and Black: brighter greys, links and button colours. Light: deeper colours and a slightly more solid card. No text is now under 3:1 contrast in any theme (Light had 34 places down to 1.6:1). The active Radar tab is readable in Light
 - Docs: the how-to images and the hero show the 1.4.0 panel (radio icon, ATC list, Radar expand button)
 - MSFS panel: transmitting on COM2 shows a small "2" on both radio icons. When the radio you transmit on has no power (the sim's COM STATUS), both icons and the frequency are dimmed
 - MSFS panel: the COM1 / COM2 popup is solid instead of see-through, so it's easy to read

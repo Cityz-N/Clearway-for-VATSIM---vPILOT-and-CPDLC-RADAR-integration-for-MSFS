@@ -957,6 +957,22 @@ canvas.cw-tring { pointer-events: none; }
 #cw-root.light #cw-card.radar-tab { --bg: #e4e7ee; --surface: #eff1f5; --surface-2: #dde1ea; --unread: #f5ecdc; }
 #cw-root.light #cw-peek { background-color: rgba(232, 235, 241, 0.85); }
 #cw-root.light #cw-vp-hint { background-color: #eff1f5; }
+#cw-root.light .cw-tab[data-tab="radar"].on { color: #1f78bd; }   /* the dark theme's light blue vanished on the pale header */
+/* Readability (1.4.0 contrast pass): the card is see-through glass, so its text has to hold up over both a bright
+   scene (clouds, snow) and a dark one. Measured on every tab: each theme's text colours are stronger inside the card.
+   Dark and Black: brighter greys and accents (they dropped to ~2.3-3:1 over bright clouds). */
+#cw-card, #cw-peek, #cw-com-pop { --muted: #a7afc2; --accent: #96aaff; --rose: #ff9898; --amber: #f8c067; --mint: #63dfae; --lav: #b9afff; }
+#cw-root.black #cw-card, #cw-root.black #cw-peek, #cw-root.black #cw-com-pop { --muted: #b2b2b2; }
+/* Light: deeper colours (made for a white page, they fell to 1.6-2.5:1 once a dark scene shows through the pale glass),
+   and a little more body to the glass */
+#cw-root.light { --text: #151a26; --muted: #545c70; --vp: #00706d; --vp-soft: rgba(0, 112, 109, 0.12); --accent: #3553d4;
+  --accent-soft: #dde3fb; --mint: #17704d; --amber: #8a5600; --rose: #ad3434; --lav: #4f3fc4; --var-text: #2b47c4; }
+#cw-root.light #cw-card, #cw-root.light #cw-peek, #cw-root.light #cw-com-pop { --muted: #545c70; --accent: #3553d4; --rose: #ad3434;
+  --amber: #8a5600; --mint: #17704d; --lav: #4f3fc4; }
+#cw-root.light #cw-card { --bg: rgba(228, 232, 240, 0.9); }
+#cw-root.light .cw-atc-cell.open { border-color: rgba(0, 112, 109, 0.45); }
+#cw-root.light .cw-atc-n { color: #ffffff; }                       /* the count on the (now deeper) teal */
+#cw-root.light .cw-tab[data-tab="radar"].on { color: #155f99; }
 /* the radios popup: solid (the card's glass tints made it see-through and hard to read) */
 #cw-com-pop { background-color: #0b1826; border-color: rgba(255, 255, 255, 0.16); }
 #cw-root.black #cw-com-pop { background-color: #0e0e0e; }
