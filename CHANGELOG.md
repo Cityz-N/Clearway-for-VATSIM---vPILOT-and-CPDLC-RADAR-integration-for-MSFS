@@ -9,6 +9,7 @@
 - MSFS panel: the frequency chat's tab shows a radio icon instead of the word FREQ (shorter)
 - MSFS panel: a radio icon in the card's header, next to the notepad: hover it for COM1 / COM2 from any tab. It glows teal when a controller is on the frequency you transmit on, blue on Unicom (122.800), orange on Guard (121.500), amber for a few seconds when text arrives on it
 - MSFS panel: the header icons have no box behind them any more (hover, muted): the icon itself brightens or glows. They're a little narrower, so the four tabs with their counters still fit next to the clock
+- MSFS panel: no more hazy dark band around the card and the icon (their drop shadow showed up wide in the sim, mostly in Dark and Black); the thin rim is now the edge
 - MSFS panel: readability pass on all three themes. Every text was measured over both a bright and a dark scene behind the see-through card. Dark and Black: brighter greys, links and button colours. Light: deeper colours and a slightly more solid card. No text is now under 3:1 contrast in any theme (Light had 34 places down to 1.6:1). The active Radar tab is readable in Light
 - Docs: the how-to images and the hero show the 1.4.0 panel (radio icon, ATC list, Radar expand button)
 - MSFS panel: transmitting on COM2 shows a small "2" on both radio icons. When the radio you transmit on has no power (the sim's COM STATUS), both icons and the frequency are dimmed
@@ -19,7 +20,7 @@
 - MSFS panel, Light theme: toned down (a soft grey-blue instead of near white)
 - MSFS panel: the mouse wheel scrolls smoothly, about two and a half lines a notch, instead of jumping by blocks
 - MSFS panel: a scrolled message list (vPilot chat, CPDLC) stays where you put it. Each time the card measured how tall to be, the list jumped back to the top
-- MSFS panel: opening the ATC list keeps the card's height (it was measured on the list instead of the messages); a long list scrolls
+- MSFS panel: opening the ATC list grows the card to show the list (up to its maximum height, then the list scrolls) and never shrinks it below the chat's height, so with few messages the controllers are no longer squeezed into a sliver
 
 ## 1.3.0
 

@@ -1352,8 +1352,9 @@
     if (atcOpen) { chat.classList.remove("hidden"); atc.classList.add("hidden"); }
     var need = Math.max(naturalHeight(el("cw-pane-vpilot")), naturalHeight(el("cw-pane-cpdlc")));
     if (atcOpen) { chat.classList.add("hidden"); atc.classList.remove("hidden"); atc.scrollTop = atcTop; }
-    // a controller's information open in the list: the card grows to show the whole list with it (up to the maximum)
-    if (atcOpen && atc.querySelector(".cw-atc-info")) need = Math.max(need, naturalHeight(el("cw-pane-vpilot")));
+    // with the ATC list open, the card grows to show the whole list (and an open controller's information), up to the
+    // maximum height; it never shrinks below the chat's height, so a list shorter than the chat doesn't move it
+    if (atcOpen) need = Math.max(need, naturalHeight(el("cw-pane-vpilot")));
     var h = (el("cw-head").offsetHeight + need + 2) / em;   // + the card's border
     h = Math.max(CARD_MIN, Math.min(CARD_MAX, h));
     var v = h.toFixed(2) + "em";

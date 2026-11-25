@@ -947,6 +947,11 @@ canvas.cw-tring { pointer-events: none; }
 #cw-root.black .cw-btn.primary { background-color: #000000; color: #d6d6d6; border: 1px solid #444444; }
 #cw-root.black .cw-input:focus, #cw-root.black .cw-notes:focus { border-color: #bdbdbd; }
 .cw-input:focus, .cw-notes:focus { outline: none; }   /* only the border marks the focused box */
+/* No drop shadows on the floating parts: in the sim the soft 50% black shadow showed as a wide hazy band around the
+   card and the icon (Dark and Black; Light's shadow is fainter). The thin rim is the edge. The start-up window's
+   green glow is kept on purpose */
+#cw-card, #cw-bubble, #cw-bubble:hover, #cw-bubble.idle:hover, #cw-bubble.q-faint:hover, #cw-peek, #cw-radar-win, #cw-com-pop { box-shadow: none !important; }
+#cw-bubble.alert-tsat { box-shadow: 0 0 1.1em rgba(134, 239, 172, 0.55) !important; }
 /* Light theme: toned down (it was close to white): a soft grey-blue base, less white in the inner boxes */
 #cw-root.light {
   --bg: #e4e7ee; --surface: #eff1f5; --surface-2: #dde1ea; --line: #d2d7e1; --bubble: #eff1f5; --bubble-line: #d2d7e1;
