@@ -7,6 +7,8 @@
   <script>
     // apply the saved theme before first paint (no white flash)
     try { var t = localStorage.getItem("clearway.theme"); if (t === "light" || t === "black") document.documentElement.dataset.theme = t; } catch (e) {}
+    // (1.5.0) edited / Custom theme colours, saved by app.js
+    try { var cv = JSON.parse(localStorage.getItem("clearway.colors") || "null"); if (cv) for (var k in cv) document.documentElement.style.setProperty(k, cv[k]); } catch (e) {}
   </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -366,7 +368,32 @@
         <h2>Options</h2>        <div class="toggle-row"><span>Answer ADS-C position requests automatically</span><label class="switch"><input type="checkbox" id="setAdsc"><i></i></label></div>
         <div class="toggle-row"><span>MSFS panel: keep typed keys away from the sim and other programs <span class="muted">(ChasePlane, sim key bindings) while you type in the panel</span></span><label class="switch"><input type="checkbox" id="setKeys"><i></i></label></div>
         <div class="toggle-row"><span>Theme <span class="muted">(phone, PC and MSFS panel)</span></span></div>
-        <div class="seg" id="setTheme"><button type="button" data-theme="dark">Dark</button><button type="button" data-theme="black">Black</button><button type="button" data-theme="light">Light</button></div>
+        <div class="seg" id="setTheme"><button type="button" data-theme="dark">Dark</button><button type="button" data-theme="black">Black</button><button type="button" data-theme="light">Light</button><button type="button" data-theme="custom">Custom</button></div>
+        <!-- (1.5.0) the chosen theme's colours (MSFS panel, this page and the phone): Dark / Black / Light can be edited, Custom is free -->
+        <details class="acc te" id="te">
+          <summary>Colours <span class="muted" style="font-weight:400;margin-left:6px">(MSFS panel and this page)</span><span class="sum-note" id="teName">Dark</span></summary>
+          <div class="te-body">
+            <div class="te-grid">
+              <label class="te-c"><input type="color" data-k="bg"><span>Background</span></label>
+              <label class="te-c"><input type="color" data-k="box"><span>Boxes</span></label>
+              <label class="te-c"><input type="color" data-k="accent"><span>Accent</span></label>
+              <label class="te-c"><input type="color" data-k="text"><span>Text</span></label>
+              <label class="te-c"><input type="color" data-k="icon_bg"><span>Icon background</span></label>
+              <label class="te-c"><input type="color" data-k="icon_fg"><span>Icon symbol</span></label>
+            </div>
+            <div class="te-alpha"><span>Transparency</span><input type="range" min="30" max="100" step="1" id="teAlpha"><b id="teAlphaV"></b></div>
+            <div class="te-prev" id="tePrev"><div class="te-card"><div class="te-head"><b>vPilot</b><i></i></div><div class="te-box">Squawk 4621, climb FL240</div><div class="te-mut">Received 12:04z</div></div><div class="te-ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v10H9l-5 4z"/></svg></div></div>
+            <div class="te-warn hidden-block" id="teWarn">Text may be hard to read on this background.</div>
+            <div class="toggle-row"><span>Coloured radar map <span class="muted">(sea and land in these colours; off: the grey map)</span></span><label class="switch"><input type="checkbox" id="setMapCol"><i></i></label></div>
+            <div class="te-grid te-map" id="teMap">
+              <label class="te-c"><input type="color" data-k="sea"><span>Sea</span></label>
+              <label class="te-c"><input type="color" data-k="land"><span>Land</span></label>
+            </div>
+            <button type="button" class="ghost te-reset" id="teReset">Reset Dark to default</button>
+          </div>
+        </details>
+        <!-- (1.5.0) rescue: the panel's icon (or its radar / notepad window) out of view -->
+        <div class="toggle-row"><span>MSFS panel: icon or window out of view? <span class="muted">(after a resolution or window change)</span></span><button type="button" class="ghost small" id="panelReset">Reset panel positions</button></div>
         <div class="toggle-row"><span>Open this page when Clearway starts <span class="muted">(otherwise double-click the tray icon)</span></span><label class="switch"><input type="checkbox" id="setBrowser"><i></i></label></div>
       </div>
 

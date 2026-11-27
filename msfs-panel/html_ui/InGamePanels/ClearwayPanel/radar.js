@@ -135,6 +135,10 @@
       loadingMsg = "";
       if (d && d.pilots) {
         serverMe = d.me || null;    // from the vPilot plugin: { cs, obs }
+        // (1.5.0) the coloured map's palette ("" = the grey map): a new one reloads the tiles in its colours
+        if (typeof d.pal === "string" && d.pal !== tilePal) {
+          tilePal = d.pal; tiles = {}; tileOrder = []; queue.length = 0; dirty = true;
+        }
         var out = [], i, p, now = Date.now(), hist = {};
         for (i = 0; i < d.pilots.length; i++) {
           p = d.pilots[i];
@@ -211,13 +215,98 @@
   }
 
   function updateStatus() {
-    var s = el("status");
-    if (loadingMsg) { s.textContent = loadingMsg; s.className = ""; return; }
-    if (!feedOk && !pilots.length) { s.textContent = "no data from Clearway"; s.className = "err"; return; }
+    var s = el("status"), d = el("data");
+    if (loadingMsg) { s.textContent = loadingMsg; s.className = ""; d.className = "rdbtn"; return; }
+    if (!feedOk && !pilots.length) { s.textContent = "no data from Clearway"; s.className = "err"; d.className = "rdbtn err"; return; }
     var age = lastFeed ? Math.round((Date.now() - lastFeed) / 1000) : 0;
-    var nAtc = atc ? atc.sectors.length + atc.airports.length : 0;
     s.textContent = pilots.length + " pilots | " + (atc ? countAtc() : 0) + " ATC | " + (feedOk ? age + " s ago" : "offline");
     s.className = feedOk ? "" : "err";
+    d.className = "rdbtn" + (feedOk ? "" : " err");                // the icon turns red when the data stops
+  }
+
+  // ------------------------------------------------------------ range rings (1.5.0)
+  // Up to 5 rings around any airport, 1-1500 nm, kept by Clearway (shared by the panel, its window and the phone).
+  // Drawn as true great circles: on the flat map a big ring is taller towards the pole, which is the correct shape
+  var rings = [], ringMenuOpen = false, cardRingOpen = false, ringMsg = "";
+  function pollRings() { getJSON("/rings", function (d) { if (d && d.rings) { var k = JSON.stringify(d.rings); if (k !== JSON.stringify(rings)) { rings = d.rings; dirty = true; ringUi(); } } }); }
+  function setRings(list, done) {
+    // "-" = no rings (an empty "set=" never reached Clearway: removing the last ring did nothing)
+    var spec = list.map(function (r) { return r.icao + ":" + r.nm; }).join(",") || "-";
+    getJSON("/rings?set=" + encodeURIComponent(spec), function (d) {
+      if (!d || !d.rings) { ringMsg = (d && d.error) || "Couldn't save the rings"; ringUi(); return; }
+      rings = d.rings; dirty = true;
+      ringMsg = d.bad && d.bad.length ? "Unknown airport or radius: " + d.bad.join(", ") : "";
+      ringUi();
+      if (done) done(d);
+    });
+  }
+  function ringPath(lat, lon, nm, ws) {
+    var d = nm / 3440.065, p1 = lat * Math.PI / 180, l1 = lon * Math.PI / 180, pts = [], prev = null;
+    for (var i = 0; i <= 128; i++) {
+      var b = i / 128 * 2 * Math.PI;
+      var p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+      var l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+      var X = sx(mercX(((l2 * 180 / Math.PI + 540) % 360) - 180), ws);
+      if (prev !== null) { while (X - prev > ws / 2) X -= ws; while (prev - X > ws / 2) X += ws; }   // across the 180th meridian
+      prev = X;
+      pts.push(X, sy(mercY(p2 * 180 / Math.PI), ws));
+    }
+    return pts;
+  }
+  function drawRings(ws) {
+    if (!rings.length) return;
+    ctx.font = "700 10px Selawik, 'Roboto-Regular', Roboto, 'Segoe UI', Arial, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    for (var i = 0; i < rings.length; i++) {
+      var r = rings[i], pts = ringPath(r.lat, r.lon, r.nm, ws);
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+      for (var k = 2; k < pts.length; k += 2) ctx.lineTo(pts[k], pts[k + 1]);
+      ctx.strokeStyle = "rgba(127, 224, 160, 0.55)"; ctx.lineWidth = 1.3; ctx.stroke();
+      // the label at the ring's top (bearing 0 = the first point)
+      ctx.fillStyle = "rgba(127, 224, 160, 0.85)";
+      ctx.fillText(r.icao + " " + r.nm + " nm", pts[0], pts[1] - 3);
+    }
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  }
+  function wire(input, onEnter) {                     // the panel's keyboard capture when there is one (the sim)
+    if (o.wireInput) o.wireInput(input, onEnter);
+    else input.onkeydown = function (e) { if (e.key === "Enter" && onEnter) onEnter(); e.stopPropagation(); };
+  }
+  function ringUi() {
+    el("ringbtn").className = "rdbtn" + (rings.length ? " on" : "") + (ringMenuOpen ? " open" : "");
+    var m = el("ringmenu");
+    if (!ringMenuOpen) { m.className = "hidden"; if (selected && selected.kind === "airport") showCard(); return; }
+    m.className = "";
+    var h = "<div class='t'>Range rings <span>" + rings.length + " / 5</span></div>";
+    for (var i = 0; i < rings.length; i++) {
+      h += "<div class='r'><span class='dot'></span><span class='icao'>" + esc(rings[i].icao) + "</span>" +
+        "<input class='nm' id='rd-rnm" + i + "' value='" + rings[i].nm + "'><span class='u'>nm</span>" +
+        "<span class='x' data-ri='" + i + "' title='Remove'>&#215;</span></div>";
+    }
+    if (rings.length < 5) {
+      h += "<div class='r add'><input class='icao' id='rd-ricao' placeholder='ICAO'><input class='nm' id='rd-rnew' placeholder='nm'>" +
+        "<span class='go' id='rd-radd'>+ Add</span></div>";
+    }
+    h += "<div class='h'>" + (ringMsg ? "<b>" + esc(ringMsg) + "</b>" : "Any airport, 1 to 1500 nm. An airport's card can set its ring too.") + "</div>";
+    m.innerHTML = h;
+    var xs = m.querySelectorAll("[data-ri]");
+    for (var j = 0; j < xs.length; j++) xs[j].onclick = function () {
+      var i2 = +this.getAttribute("data-ri"), list = rings.slice(); list.splice(i2, 1); setRings(list);
+    };
+    for (var n = 0; n < rings.length; n++) (function (idx) {
+      var inp = el("rnm" + idx);
+      wire(inp, function () { var list = rings.slice(); list[idx] = { icao: rings[idx].icao, nm: parseInt(inp.value, 10) || rings[idx].nm }; setRings(list); });
+    })(n);
+    if (rings.length < 5) {
+      var add = function () {
+        var code = el("ricao").value.trim().toUpperCase(), nm = parseInt(el("rnew").value, 10);
+        if (!code || !(nm >= 1 && nm <= 1500)) { ringMsg = "Type an airport and a radius of 1 to 1500 nm"; ringUi(); return; }
+        setRings(rings.concat([{ icao: code, nm: nm }]));
+      };
+      wire(el("ricao"), function () { el("rnew").focus(); });
+      wire(el("rnew"), add);
+      el("radd").onclick = add;
+    }
   }
   function countAtc() {
     var n = atc.sectors.length + atc.unplaced.length, i, j;   // ATIS not counted
@@ -227,7 +316,7 @@
   }
 
   // ------------------------------------------------------------ tiles
-  var tiles = {}, tileOrder = [], loading = 0, queue = [];
+  var tiles = {}, tileOrder = [], loading = 0, queue = [], tilePal = "";
   function tileImg(z, x, y, request) {
     var key = z + "/" + x + "/" + y, t = tiles[key];
     if (t && t.ok && !(t.img.width > 0 && t.img.height > 0)) {
@@ -257,7 +346,7 @@
           pump();
         };
         t.img.onerror = function () { loading--; delete tiles[t.key]; pump(); };
-        t.img.src = API + "/tiles/" + t.key + ".png?s=esri";
+        t.img.src = API + "/tiles/" + t.key + ".png?s=esri" + (tilePal ? "&p=" + tilePal : "");
       })(queue.shift());
     }
   }
@@ -359,6 +448,8 @@
     drawTrafficAirports(ws);
     if (opts.atc && atc) drawAtc(ws);
     if (selected && selected.kind === "airport") drawRoutes(ws, selected.key);
+    drawRings(ws);
+    drawArrLines(ws);
     drawPilots(ws);
     if (me && !mineCs) drawMe(ws);    // not connected: outline of your sim position only
     var t1 = (window.performance && performance.now) ? performance.now() : Date.now();
@@ -447,6 +538,9 @@
     }
   }
 
+  // (1.5.0) airport dots twice the size they were (2.5 px radius), easier to see and to click
+  var AP_DOT = 5;
+
   // faint dot (and ICAO when zoomed in) for every airport with arriving traffic
   function drawTrafficAirports(ws) {
     apHits = [];
@@ -458,8 +552,8 @@
       if (!a.nArr) continue;
       x = sx(a.mx, ws); y = sy(a.my, ws);
       if (x < -30 || x > W + 30 || y < -20 || y > H + 20) continue;
-      ctx.moveTo(x + 2.5, y);
-      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.moveTo(x + AP_DOT, y);
+      ctx.arc(x, y, AP_DOT, 0, Math.PI * 2);
       a.x = x; a.y = y;
       apHits.push(a);
     }
@@ -471,7 +565,7 @@
     for (var i = 0; i < apHits.length; i++) {
       a = apHits[i];
       if (opts.atc && atc && findAtcAirport(a.icao)) continue;   // drawn with its ATC badges
-      ctx.fillText(a.icao, a.x, a.y - 3);                          // the name above the dot
+      ctx.fillText(a.icao, a.x, a.y - AP_DOT - 1);                 // the name above the dot
     }
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
   }
@@ -511,6 +605,58 @@
     ctx.stroke();
   }
 
+  // (1.5.0) a line from a clicked aircraft to its arrival airport: 2 at most (yours and another, or two others; a
+  // third replaces the oldest). Click the aircraft again to remove it; it also goes when the pilot leaves
+  var arrSel = [], apCache = {};
+  function toggleArrLine(cs) {
+    var i = arrSel.indexOf(cs);
+    if (i >= 0) arrSel.splice(i, 1);
+    else { arrSel.push(cs); if (arrSel.length > 2) arrSel.shift(); }
+    dirty = true;
+  }
+  function arrAirport(icao) {                          // known from the traffic, else asked once from Clearway
+    if (!icao) return null;
+    var t = trafficAps[icao];
+    if (t && typeof t.lat === "number") return t;
+    var c = apCache[icao];
+    if (c === undefined) {
+      apCache[icao] = null;
+      getJSON("/airport?icao=" + encodeURIComponent(icao), function (d) { apCache[icao] = d && typeof d.lat === "number" ? d : false; dirty = true; });
+      return null;
+    }
+    return c || null;
+  }
+  function nmBetween(lat1, lon1, lat2, lon2) {
+    var r = Math.PI / 180, p1 = lat1 * r, p2 = lat2 * r;
+    var d = 2 * Math.asin(Math.sqrt(Math.pow(Math.sin((p2 - p1) / 2), 2) + Math.cos(p1) * Math.cos(p2) * Math.pow(Math.sin((lon2 - lon1) * r / 2), 2)));
+    return d * 3440.065;
+  }
+  function drawArrLines(ws) {
+    if (!arrSel.length) return;
+    var keep = [];
+    ctx.font = "700 10px Selawik, 'Roboto-Regular', Roboto, 'Segoe UI', Arial, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    for (var i = 0; i < arrSel.length; i++) {
+      var cs = arrSel[i], p = null;
+      for (var j = 0; j < pilots.length; j++) if (pilots[j].cs === cs) { p = pilots[j]; break; }
+      if (!p) continue;                                // left the network: its line goes
+      keep.push(cs);
+      var isMine = cs === mineCs, lat = isMine && me ? me.lat : p.lat, lon = isMine && me ? me.lon : p.lon;
+      var arr = p.arr || (isMine && o.myArrival ? o.myArrival() : "");
+      var a = arrAirport(arr);
+      if (!a) continue;
+      var pts = gcLine(lat, lon, a.lat, a.lon, ws);
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+      for (var k = 2; k < pts.length; k += 2) ctx.lineTo(pts[k], pts[k + 1]);
+      ctx.strokeStyle = isMine ? "rgba(120, 230, 255, 0.95)" : "rgba(79, 209, 255, 0.75)"; ctx.lineWidth = isMine ? 1.8 : 1.4; ctx.stroke();
+      var ex = pts[pts.length - 2], ey = pts[pts.length - 1];
+      ctx.fillStyle = "rgba(120, 230, 255, 0.95)";
+      ctx.fillText(arr + " " + Math.round(nmBetween(lat, lon, a.lat, a.lon)).toLocaleString("en-US") + " nm", ex, ey - 5);
+    }
+    if (keep.length !== arrSel.length) arrSel = keep;
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  }
+
   // departures (red) and arrivals (green) of the selected airport
   function drawRoutes(ws, icao) {
     var a = trafficAps[icao];
@@ -525,7 +671,8 @@
     strokeLines(arr, "rgba(86,226,128,0.75)");
   }
 
-  var BADGES = [["DEL", "D", "#4fa3ff"], ["GND", "G", "#48c774"], ["TWR", "T", "#ff6363"], ["APP", "A", "#ffb84d"], ["ATIS", "i", "#3cc6c6"]];
+  // (1.5.0: Ramp gets its own purple R; it used to light Ground's G)
+  var BADGES = [["DEL", "D", "#4fa3ff"], ["GND", "G", "#48c774"], ["RMP", "R", "#b07cff"], ["TWR", "T", "#ff6363"], ["APP", "A", "#ffb84d"], ["ATIS", "i", "#3cc6c6"]];
   function drawAirports(ws) {
     badgeHits = [];
     if (view.z < 3.5) return;
@@ -540,13 +687,13 @@
       list = [];
       for (j = 0; j < BADGES.length; j++) {
         var b = BADGES[j];
-        if (a.types[b[0]] || (b[0] === "APP" && a.types.DEP) || (b[0] === "GND" && a.types.RMP)) list.push(b);
+        if (a.types[b[0]] || (b[0] === "APP" && a.types.DEP)) list.push(b);
       }
       // the airport dot, its controller badges just under it and (zoomed in) its name above it
       var w = list.length * 12 + 2, named = view.z >= 6;
-      bx = Math.round(x - w / 2); by = Math.round(y + 5);
+      bx = Math.round(x - w / 2); by = Math.round(y + AP_DOT + 2.5);
       ctx.fillStyle = "#c7d2df";
-      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, AP_DOT, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "rgba(11,14,19,0.9)";
       ctx.fillRect(bx - 1, by - 1, w + 2, 14);
       for (j = 0; j < list.length; j++) {
@@ -557,9 +704,9 @@
       }
       if (named) {
         ctx.fillStyle = "#c7d2df";
-        ctx.fillText(a.icao, x, y - 9);
+        ctx.fillText(a.icao, x, y - AP_DOT - 6.5);
       }
-      var top = named ? y - 16 : y - 4;
+      var top = named ? y - AP_DOT - 13.5 : y - AP_DOT - 1.5;
       gridAdd(bx - 1, top, w + 2, by + 13 - top);
       badgeHits.push([bx - 2, top, w + 4, by + 14 - top, a, { x: bx + w / 2, y: by + 6 }]);   // [5]: the badges' middle
     }
@@ -597,7 +744,31 @@
     fillPlanes(groups.mine, size * 1.25, "#5dff9b");
     if (mineSel) groups.sel = groups.mine;     // your plane clicked: expanded label, still green
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawEmergencies(size);
     if (opts.labels) drawLabels(groups, size);
+  }
+
+  // (1.5.0) pilots squawking 7700: a red ring around the plane (its own symbol shows through). The squawk itself is a
+  // bold red "7700" at the end of the label's second line, after the arrival (drawLabels; user: no second callsign).
+  // With labels off, just that "7700" beside the ring, so an emergency never goes unseen
+  function isEmergency(p) { return String(p.sq) === "7700"; }
+  function drawEmergencies(size) {
+    var r = Math.max(9, size * 1.8);
+    ctx.font = "700 10px Selawik, 'Roboto-Regular', Roboto, 'Segoe UI', Arial, sans-serif";
+    ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    for (var i = 0; i < hits.length; i++) {
+      var p = hits[i];
+      if (!isEmergency(p)) continue;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 60, 60, 0.16)"; ctx.fill();
+      ctx.lineWidth = 1.6; ctx.strokeStyle = "#ff4d4d"; ctx.stroke();
+      if (!opts.labels) {
+        ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(8,11,16,0.85)"; ctx.lineJoin = "round";
+        ctx.strokeText("7700", p.x + r + 3, p.y);
+        ctx.fillStyle = "#ff4d4d"; ctx.fillText("7700", p.x + r + 3, p.y);
+      }
+    }
+    ctx.textBaseline = "alphabetic";
   }
 
   // Each icon (kind x colour x size) is drawn once into a small canvas with its outline,
@@ -671,7 +842,10 @@
     // show labels when zoomed in, or when few aircraft are on screen
     // your own plane always gets a label, even when the others are hidden
     var top = groups.sel === groups.mine ? groups.sel : groups.sel.concat(groups.mine);
-    var list = top.concat(groups.air, groups.gnd);
+    // aircraft squawking 7700 are always labelled too, even when the crowd's labels are hidden
+    for (var ei = 0; ei < hits.length; ei++) if (isEmergency(hits[ei]) && top.indexOf(hits[ei]) < 0) top = top.concat([hits[ei]]);
+    // (1.5.0 fix) a 7700 is also in groups.air / gnd: drawn once only, or it got a second label in another spot
+    var list = top.concat(groups.air.concat(groups.gnd).filter(function (q) { return top.indexOf(q) < 0; }));
     if (view.z < 5.5 && hits.length > 120) list = top;
     if (!list.length) return;
     ctx.textBaseline = "alphabetic";
@@ -685,11 +859,13 @@
       var cs = p.cs, typ = p.type ? "  " + p.type : "";
       var fr = isSel && p.freq ? "  " + p.freq.split(" ")[0] : "";
       var l2 = isSel ? (p.arr ? p.arr + "  " : "") + altText(p) + "  " + p.gs + "kt" : (p.arr || "");
+      var emg = isEmergency(p), sqT = emg ? (l2 ? "  7700" : "7700") : "";   // bold red, after the arrival
       ctx.font = BOLD;
-      var wCs = ctx.measureText(cs).width;
+      var wCs = ctx.measureText(cs).width, wSq = sqT ? ctx.measureText(sqT).width : 0;
       ctx.font = REG;
-      var wTyp = ctx.measureText(typ).width, wFr = ctx.measureText(fr).width;
-      var w = Math.max(wCs + wTyp + wFr, l2 ? ctx.measureText(l2).width : 0) + 4, h = l2 ? lh * 2 + 3 : lh + 3;
+      var wTyp = ctx.measureText(typ).width, wFr = ctx.measureText(fr).width, wL2 = l2 ? ctx.measureText(l2).width : 0;
+      var two = !!(l2 || sqT);
+      var w = Math.max(wCs + wTyp + wFr, wL2 + wSq) + 4, h = two ? lh * 2 + 3 : lh + 3;
       var off = size + 4, spots = [[off, -h / 2], [-off - w, -h / 2], [-w / 2, -off - h], [-w / 2, off]];
       for (var k = 0; k < spots.length; k++) {
         var bx = Math.round(p.x + spots[k][0]), by = Math.round(p.y + spots[k][1]);
@@ -704,6 +880,7 @@
           ctx.font = BOLD; ctx.strokeText(cs, bx + 2, by + lh);
           ctx.font = REG; ctx.strokeText(typ, bx + 2 + wCs, by + lh);
           if (l2) ctx.strokeText(l2, bx + 2, by + lh * 2 + 1);
+          if (sqT) { ctx.font = BOLD; ctx.strokeText(sqT, bx + 2 + wL2, by + lh * 2 + 1); }
         }
         ctx.font = BOLD;
         ctx.fillStyle = p.cs === mineCs ? "#5dff9b" : (isSel ? "#4fd1ff" : "#ffffff");
@@ -717,6 +894,7 @@
         }
         ctx.fillStyle = "#a9b8c9";
         ctx.fillText(l2, bx + 2, by + lh * 2 + 1);
+        if (sqT) { ctx.font = BOLD; ctx.fillStyle = "#ff5a5a"; ctx.fillText(sqT, bx + 2 + wL2, by + lh * 2 + 1); }
         break;
       }
     }
@@ -752,7 +930,8 @@
           "<div class='row'><span>Ground speed</span><b>" + p.gs + " kt</b></div>" +
           "<div class='row'><span>Heading</span><b>" + ("00" + p.hdg).slice(-3) + "&deg;</b></div>" +
           "<div class='row'><span>Squawk</span><b>" + esc(p.sq) + "</b></div>" +
-          "<div class='row'><span>Tuned</span><span class='freq'>" + esc(p.freq || "-") + "</span></div>";
+          "<div class='row'><span>Tuned</span><span class='freq'>" + esc(p.freq || "-") + "</span></div>" +
+          (arrSel.indexOf(p.cs) >= 0 && !p.arr && !(p.cs === mineCs && o.myArrival && o.myArrival()) ? "<div class='sub'>No arrival filed: no line to draw</div>" : "");
       }
     } else if (selected.kind === "sector") {
       var s = findSector(selected.key);
@@ -763,13 +942,46 @@
       if (!a && !t) { selected = null; c.className = "hidden"; showTraffic(); return; }
       // the airport name sits on the ICAO line; departures/arrivals live in their own box (showTraffic)
       h = "<div class='cs'>" + esc(selected.key) + (t && t.name ? "<span class='nm'>" + esc(t.name) + "</span>" : "") + "</div>";
+      // (1.5.0) its range rings: the circle button left of the X (lists them: "◎ 25 · 100 nm"); click to edit,
+      // right click to remove them all
+      var mine = rings.filter(function (r) { return r.icao === selected.key; });
+      h += "<span class='rr" + (mine.length ? " on" : "") + "' id='rd-cardring' title='" + (mine.length ? "Range rings (right click to remove them)" : "Range ring") + "'>" +
+        "<svg viewBox='0 0 20 20'><circle cx='10' cy='10' r='7'/><circle class='c' cx='10' cy='10' r='1.7'/></svg>" +
+        (mine.length ? "<span class='v'>" + mine.map(function (r) { return r.nm; }).join(" · ") + " nm</span>" : "") + "</span>";
+      if (cardRingOpen) {
+        h += "<div class='rrow'>";
+        for (var q = 0; q < mine.length; q++) h += "<span class='rchip'>" + mine[q].nm + " nm <i data-rnm='" + mine[q].nm + "'>&#215;</i></span>";
+        if (rings.length < 5) h += "<input id='rd-cardnm' placeholder='nm'><span class='ok' id='rd-cardok'>&#10003;</span>";
+        h += "</div><div class='rhint'>" + (ringMsg ? esc(ringMsg) : (rings.length < 5 ? "1 to 1500 nm" : "5 rings already: remove one first")) + "</div>";
+      }
       if (a) for (var j = 0; j < a.c.length; j++) h += ctlHtml(a.c[j]);
     }
     c.innerHTML = "<span class='x' id='rd-cardx' title='Close'><i class='a'></i><i class='b'></i></span>" + h;
     // the first line keeps clear of the close button (the frequency used to cover it)
     for (var fi = 0; fi < c.children.length; fi++) if (c.children[fi].id !== "rd-cardx") { c.children[fi].className += " first"; break; }
-    c.className = selected.kind === "airport" ? "ap" : "";
-    el("cardx").onclick = function () { selected = null; showCard(); dirty = true; };
+    c.className = (selected.kind === "airport" ? "ap" : "") + (el("cardring") && el("cardring").className.indexOf(" on") > 0 ? " ringon" : "");
+    el("cardx").onclick = function () { selected = null; cardRingOpen = false; showCard(); dirty = true; };
+    var cr = el("cardring");
+    if (cr) {
+      var icao = selected.key;
+      cr.onclick = function () { cardRingOpen = !cardRingOpen; ringMsg = ""; showCard(); if (cardRingOpen && el("cardnm")) el("cardnm").focus(); };
+      cr.oncontextmenu = cr.onmousedown = function (e) {
+        if (e.type === "mousedown" && e.button !== 2) return;
+        e.preventDefault(); e.stopPropagation();
+        setRings(rings.filter(function (r) { return r.icao !== icao; }), function () { showCard(); });
+      };
+      var addAp = function () {
+        var nm = parseInt((el("cardnm") || {}).value, 10);
+        if (!(nm >= 1 && nm <= 1500)) { ringMsg = "1 to 1500 nm"; showCard(); return; }
+        setRings(rings.concat([{ icao: icao, nm: nm }]), function () { showCard(); });
+      };
+      if (el("cardnm")) { wire(el("cardnm"), addAp); el("cardok").onclick = addAp; }
+      var dels = c.querySelectorAll("[data-rnm]");
+      for (var dI = 0; dI < dels.length; dI++) dels[dI].onclick = function () {
+        var nm = +this.getAttribute("data-rnm");
+        setRings(rings.filter(function (r) { return !(r.icao === icao && r.nm === nm); }), function () { showCard(); });
+      };
+    }
     // an ATIS is folded to two lines: its link shows all of it (and it stays open across refreshes)
     var ats = c.getElementsByClassName("atis-more");
     for (var m = 0; m < ats.length; m++) ats[m].onclick = function () {
@@ -907,7 +1119,21 @@
     var d = drag; endDrag();
     if (d.moved) { save("radar.view", view); return; }
     var q = px(e);
-    selected = pickAt(q.x, q.y);
+    var prevSel = selected, pick = pickAt(q.x, q.y);
+    var same = !!(pick && prevSel && pick.kind === prevSel.kind && pick.key === prevSel.key);
+    selected = pick;
+    if (!same) cardRingOpen = false;
+    // arrival lines (1.5.0, user's rule): click an aircraft = its details + its line; click elsewhere = details close,
+    // the line stays; click that aircraft again (not selected) = its line goes and nothing is selected
+    if (pick && pick.kind === "pilot" && !same) {
+      if (arrSel.indexOf(pick.key) >= 0) { toggleArrLine(pick.key); selected = null; }
+      else toggleArrLine(pick.key);
+    }
+    // a newly opened airport card shows its controllers folded (callsign + frequency); click one to open it
+    if (pick && pick.kind === "airport" && !same) {
+      var apc = findAtcAirport(pick.key);
+      for (var fi = 0; apc && fi < apc.c.length; fi++) foldedCtl[apc.c[fi].cs] = 1;
+    }
     showCard();
     dirty = true;
   });
@@ -1014,13 +1240,14 @@
   }
   function bindToggle(id, key) {
     var b = el(id);
-    b.className = "btn tog" + (opts[key] ? " on" : "");
-    b.onclick = function () { opts[key] = !opts[key]; b.className = "btn tog" + (opts[key] ? " on" : ""); save("radar.opts", opts); dirty = true; };
+    b.className = "btn tog ico" + (opts[key] ? " on" : "");
+    b.onclick = function () { opts[key] = !opts[key]; b.className = "btn tog ico" + (opts[key] ? " on" : ""); save("radar.opts", opts); dirty = true; };
   }
   bindToggle("tLabels", "labels");
   bindToggle("tAtc", "atc");
   opts.ground = true;          // no GND button any more: planes on the ground show from airport zoom (GROUND_MIN_Z)
-  function showSize() { el("tSize").textContent = SIZE_LABEL[opts.size] || "AUTO"; el("tSize").title = "Display size: " + opts.size + " (click to change)"; }
+  // (1.5.0) the button shows a symbol: the current size is in its tooltip
+  function showSize() { el("tSize").title = "Display size: " + (SIZE_LABEL[opts.size] || "AUTO") + " (click to change)"; }
   if (el("tSize")) {
     showSize();
     el("tSize").onclick = function () {
@@ -1351,9 +1578,10 @@
     snap.fast = true;
   }
 
+  el("ringbtn").onclick = function () { ringMenuOpen = !ringMenuOpen; ringMsg = ""; ringUi(); };
   paused = !isVisible();
-  if (!paused) { pollTraffic(); pollAtc(); startFrames(); }
-  setInterval(function () { if (!paused) { pollTraffic(); pollAtc(); } }, POLL_MS);
+  if (!paused) { pollTraffic(); pollAtc(); pollRings(); startFrames(); }
+  setInterval(function () { if (!paused) { pollTraffic(); pollAtc(); pollRings(); } }, POLL_MS);
   setInterval(function () { if (!paused) updateStatus(); }, 5000);
   setInterval(function () { if (!paused) readSim(); }, 1000);
   setInterval(checkVisible, 1000);
@@ -1367,25 +1595,32 @@
   var MARKUP =
     '<canvas id="rd-map"></canvas><canvas id="rd-map2"></canvas>' +
     '<div id="rd-tools">' +
-      '<div id="rd-zin" class="btn big" title="Zoom in">+</div>' +
-      '<div id="rd-zout" class="btn big" title="Zoom out">-</div>' +
+      // (1.5.0) small square buttons with symbols instead of text (zoom, my aircraft, labels, ATC, display size)
+      '<div id="rd-zin" class="btn ico" title="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>' +
+      '<div id="rd-zout" class="btn ico" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></div>' +
       '<div id="rd-me" class="btn tog target" title="Centre on my aircraft (click again to keep tracking it)">' +
         '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle class="dot" cx="12" cy="12" r="1.8"/>' +
         '<path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></svg></div>' +
       '<span class="sep"></span>' +
-      '<div id="rd-tLabels" class="btn tog on" title="Aircraft labels">LBL</div>' +
-      '<div id="rd-tAtc" class="btn tog on" title="Controllers and sectors">ATC</div>' +
-
+      // labels: a tag with two text lines; ATC: a control tower; display size: a big and a small A
+      '<div id="rd-tLabels" class="btn tog ico on" title="Aircraft labels"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10.5h10M7 14h6"/></svg></div>' +
+      '<div id="rd-tAtc" class="btn tog ico on" title="Controllers and sectors"><svg viewBox="0 0 24 24"><path d="M8 8h8l-1.2 4H9.2zM10 12l-1.5 9M14 12l1.5 9M12 8V4.5M9.5 4.5h5"/></svg></div>' +
       '<span class="sep"></span>' +
-      '<div id="rd-tSize" class="btn tog on" title="Display size">AUTO</div>' +
+      '<div id="rd-tSize" class="btn tog ico on" title="Display size"><svg viewBox="0 0 24 24"><path d="M3 20l5-14 5 14M5 15h6M14 20l3.5-9 3.5 9M15.3 17h4.4"/></svg></div>' +
     '</div>' +
     '<div id="rd-topright">' +
-      '<div id="rd-status">connecting...</div>' +
+      // (1.5.0) the data readout (pilots | ATC | age) became a small icon: hover it to read it (click: perf readout)
+      '<div id="rd-data" class="rdbtn"><svg viewBox="0 0 20 20"><path d="M4 16V10M10 16V4M16 16V8"/></svg>' +
+        '<div id="rd-status">connecting...</div></div>' +
+      // range rings: the menu (up to 5 rings, any airport, 1-1500 nm); green while rings are shown
+      '<div id="rd-ringbtn" class="rdbtn" title="Range rings"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/>' +
+        '<circle class="c" cx="10" cy="10" r="1.7"/></svg></div>' +
       '<div id="rd-expand" class="hidden" title="Bigger radar">' +
         '<svg class="ex" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/></svg>' +     // arrows out
         '<svg class="sh" viewBox="0 0 24 24"><path d="M20 4l-6 6M14 4v6h6M4 20l6-6M10 20v-6H4"/></svg></div>' +   // arrows in
       '<div id="rd-detach" class="hidden" title="Open the radar in its own window"><i class="box"></i><i class="out"></i></div>' +
     '</div>' +
+    '<div id="rd-ringmenu" class="hidden"></div>' +
     '<div id="rd-card" class="hidden"></div>' +
     '<div id="rd-traf" class="hidden">' +
       '<div id="rd-tDep" class="tc dep" title="Departures: show their routes"><span id="rd-tDepN">0</span><i>DEP</i></div>' +

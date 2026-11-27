@@ -78,16 +78,19 @@ For flight simulation only. MIT License.
 """
 
 
-def main() -> None:
-    app = DIST / "Clearway"
-    dll = ROOT / "vpilot-plugin" / "compiled" / "Clearway.vPilot.dll"
-    for needed in (app / "Clearway.exe", dll, ROOT / "msfs-panel" / "compiled" / "clearway-panel.spb"):
-        if not needed.exists():
-            sys.exit(f"Missing {needed}. Build it first (see README).")
+# (1.5.0) one standard download, plus one per ultrawide screen shape: the same files, only the panel frame differs
+# (variant -> zip name part, the line added at the top of READ ME FIRST)
+VARIANTS = [
+    ("16x9", "", ""),
+    ("21x9", "21-9-wide-", "THIS IS THE 21:9 ULTRAWIDE VERSION (2560x1080, 3440x1440). On a 16:9 screen use the standard\n"
+                           "download instead: on a 16:9 screen this version puts part of the panel off the screen.\n\n"),
+    ("32x9", "32-9-wide-", "THIS IS THE 32:9 SUPER ULTRAWIDE VERSION (5120x1440). On a 16:9 or 21:9 screen use the\n"
+                           "matching download instead: on those screens this version puts part of the panel off the screen.\n\n"),
+]
 
-    # fresh copy of the MSFS package
-    subprocess.run([sys.executable, str(ROOT / "tools" / "build_panel.py"), "--assemble"], check=True)
 
+def make_zip(variant: str, name_part: str, note: str, app: Path, dll: Path) -> None:
+    subprocess.run([sys.executable, str(ROOT / "tools" / "build_panel.py"), "--assemble", "--variant", variant], check=True)
     stage = DIST / "release" / "clearway-panel"
     if stage.parent.exists():
         shutil.rmtree(stage.parent)
@@ -96,10 +99,10 @@ def main() -> None:
     shutil.copytree(app, comp)                       # Clearway.exe + _internal/
     (comp / "vPilot plugin").mkdir(parents=True)
     shutil.copy2(dll, comp / "vPilot plugin" / "Clearway.vPilot.dll")
-    (comp / "READ ME FIRST.txt").write_text(README.replace("\n", "\r\n"), encoding="utf-8")
+    (comp / "READ ME FIRST.txt").write_text((note + README).replace("\n", "\r\n"), encoding="utf-8")
     shutil.copy2(ROOT / "LICENSE", comp / "LICENSE.txt")
 
-    out = DIST / f"Clearway-for-VATSIM-v{VERSION}.zip"
+    out = DIST / f"Clearway-for-VATSIM-{name_part}v{VERSION}.zip"
     if out.exists():
         out.unlink()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
@@ -107,6 +110,22 @@ def main() -> None:
             if f.is_file():
                 z.write(f, f.relative_to(stage.parent).as_posix())
     print(f"Created {out}  ({out.stat().st_size / 1_048_576:.1f} MB)")
+
+
+def main() -> None:
+    app = DIST / "Clearway"
+    dll = ROOT / "vpilot-plugin" / "compiled" / "Clearway.vPilot.dll"
+    for needed in (app / "Clearway.exe", dll, ROOT / "msfs-panel" / "compiled" / "clearway-panel.spb"):
+        if not needed.exists():
+            sys.exit(f"Missing {needed}. Build it first (see README).")
+    for variant, name_part, note in VARIANTS:
+        spb = ROOT / "msfs-panel" / "compiled" / ("clearway-panel.spb" if variant == "16x9" else f"clearway-panel-{variant}.spb")
+        if not spb.exists():
+            print(f"Skipped the {variant} download: no {spb.name} yet (see VARIANTS in tools/build_panel.py)")
+            continue
+        make_zip(variant, name_part, note, app, dll)
+    # leave dist/clearway-panel as the standard (16:9) package, the one --install and the upload use
+    subprocess.run([sys.executable, str(ROOT / "tools" / "build_panel.py"), "--assemble"], check=True, capture_output=True)
 
 
 if __name__ == "__main__":

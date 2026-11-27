@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import threading
 import time
 
@@ -19,6 +20,8 @@ VPILOT_TIMEOUT = 8            # seconds without a plugin heartbeat before it cou
 LONG_POLL = 4                 # the plugin's outbox request waits up to this long for a command
 VP_KINDS = {"pm", "radio", "broadcast", "selcal", "vinfo", "vsys"}
 FREQ = "FREQ"                 # chat id of the main frequency chat
+# (1.5.0) a controller asking you to call them ("Please contact me on 128.275"): the panel shows its peek by itself
+CONTACT_ME = re.compile(r"\bcontact\s+me\b", re.I)
 
 # vPilot dot commands that plugins can't perform (vPilot doesn't expose them)
 NOT_AVAILABLE = {
@@ -202,12 +205,14 @@ class VpilotMixin:
                 self._bump()
             self._system("Disconnected from VATSIM.", vp=True)
         elif kind == "pm":
-            self._notify(self._add("in", "pm", sender, text, chat=sender))
+            # urgent 1: "contact me" (the panel opens its peek by itself, ahead of everything); urgent 2: SELCAL
+            extra = {"urgent": 1} if CONTACT_ME.search(text) else {}
+            self._notify(self._add("in", "pm", sender, text, chat=sender, **extra))
         elif kind == "broadcast":
             self._notify(self._add("in", "broadcast", sender, text, chat=FREQ))
         elif kind == "selcal":
             freqs = str(evt.get("frequencies", ""))
-            msg = self._add("in", "selcal", sender, f"SELCAL alert{' on ' + freqs if freqs else ''}", chat=FREQ)
+            msg = self._add("in", "selcal", sender, f"SELCAL alert{' on ' + freqs if freqs else ''}", chat=FREQ, urgent=2)
             self._notify(msg, priority=5)
         elif kind == "radio":
             me = self.vpilot_callsign or self.callsign

@@ -6,7 +6,12 @@
   font-family: "Selawik", "Roboto-Regular", "Roboto", "Segoe UI", Arial, sans-serif; font-size: 12px; color: #dfe6ef;
   text-transform: none; letter-spacing: 0; line-height: 1.3;
 }
-/* two stacked canvases (double buffering in radar.js): the front one has z-index 1, the hidden one 0 */
+/* (1.5.0) the radar's own colours as variables: these defaults are the radar's usual look; the panel's edited / Custom
+   themes override them (ClearwayPanel.js applyTheme) */
+#rd-radar {
+  --rd-bg: rgba(16, 21, 29, 0.86); --rd-panel: rgba(14, 19, 26, 0.94); --rd-hover: rgba(32, 42, 56, 0.95);
+  --rd-line: #263040; --rd-acc-line: #2f5672; --rd-text: #cfd8e3; --rd-acc: #8fd3ff; --rd-muted: #9aa7b8; --rd-dim: #6c7a8c;
+}/* two stacked canvases (double buffering in radar.js): the front one has z-index 1, the hidden one 0 */
 #rd-map, #rd-map2 { position: absolute; left: 0; top: 0; width: 100%; height: 100%; cursor: grab; }
 #rd-map { z-index: 1; }
 #rd-map2 { z-index: 0; visibility: hidden; }
@@ -18,7 +23,7 @@
 /* same box as the pilot count (#rd-status): same font size, padding, line height and border, so the same height */
 #rd-traf {
   position: absolute; right: 0.9em; bottom: 1.8em; display: flex; align-items: center; padding: 0.42em 0.6em; border-radius: 0.5em;
-  background: rgba(16, 21, 29, 0.85); border: 1px solid #222b37; line-height: 1.3; color: #8d9bad;   /* font size: radar.js */
+  background: var(--rd-bg); border: 1px solid var(--rd-line); line-height: 1.3; color: var(--rd-muted);   /* font size: radar.js */
 }
 #rd-traf, #rd-status { box-sizing: border-box; height: 2.15em; }
 #rd-traf { padding-top: 0; padding-bottom: 0; }
@@ -38,41 +43,105 @@
 #rd-tools { position: absolute; left: 0.83em; top: 0.83em; }
 #rd-tools .btn {
   display: block; box-sizing: border-box; width: 3.2em; height: 2.6em; line-height: 2.5em; margin-bottom: 0.33em;
-  border: 1px solid #2a3442; border-radius: 0.5em; background: rgba(16, 21, 29, 0.88);
-  color: #cfd8e3; font-size: 1em; font-weight: 600; text-align: center; cursor: pointer;
+  border: 1px solid var(--rd-line); border-radius: 0.5em; background: var(--rd-bg);
+  color: var(--rd-text); font-size: 1em; font-weight: 600; text-align: center; cursor: pointer;
 }
-#rd-tools .btn:hover { background: rgba(32, 42, 56, 0.95); }
+#rd-tools .btn:hover { background: var(--rd-hover); }
 #rd-tools .btn.big { font-size: 1.25em; width: 2.56em; height: 2.08em; line-height: 1.98em; }
-#rd-tools .btn.tog { font-size: 0.83em; width: 3.84em; height: 3.12em; line-height: 3.02em; color: #6c7a8c; }
-#rd-tools .btn.tog.on { color: #8fd3ff; border-color: #2f5672; }
+#rd-tools .btn.tog { font-size: 0.83em; width: 3.84em; height: 3.12em; line-height: 3.02em; color: var(--rd-dim); }
+#rd-tools .btn.tog.on { color: var(--rd-acc); border-color: var(--rd-acc-line); }
 #rd-tools .sep { display: block; height: 0.5em; }
+
 
 #rd-topright { position: absolute; right: 0.83em; top: 0.83em; display: flex; align-items: flex-start; }
 #rd-status {
   padding: 0.42em 0.75em; border-radius: 0.5em; cursor: pointer;
-  background: rgba(16, 21, 29, 0.85); border: 1px solid #222b37; font-size: 0.92em; color: #8d9bad;
+  background: var(--rd-bg); border: 1px solid var(--rd-line); font-size: 0.92em; color: var(--rd-muted);
 }
 #rd-status.err { color: #ff9b7a; border-color: #5a2f25; }
+/* (1.5.0) small square icons in the top right: data (hover shows the pilot / ATC count) and range rings */
+#rd-topright .rdbtn {
+  margin-left: 0.4em; width: 2.1em; height: 2.1em; border-radius: 0.5em; cursor: pointer; position: relative; box-sizing: border-box;
+  background: var(--rd-bg); border: 1px solid var(--rd-line);
+}
+#rd-topright .rdbtn:first-child { margin-left: 0; }
+#rd-topright .rdbtn:hover { background: var(--rd-hover); border-color: var(--rd-acc-line); }
+#rd-topright .rdbtn svg { position: absolute; left: 0.35em; top: 0.35em; width: 1.3em; height: 1.3em; fill: none; stroke: var(--rd-text);
+  stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#rd-data.err svg { stroke: #ff9b7a; }
+#rd-data.err { border-color: #5a2f25; }
+#rd-data #rd-status { display: none; position: absolute; right: 0; top: 2.4em; white-space: nowrap; height: auto; }
+#rd-data:hover #rd-status { display: block; }
+#rd-ringbtn svg .c { fill: var(--rd-text); stroke: none; }
+#rd-ringbtn.on svg { stroke: #7fe0a0; }
+#rd-ringbtn.on svg .c { fill: #7fe0a0; }
+#rd-ringbtn.open { border-color: #3f7a55; background: rgba(22, 40, 30, 0.95); }
+#rd-ringmenu {
+  /* under the top-right buttons: 3.3 em of the radar's size = 3.9 em of this menu's smaller text */
+  position: absolute; right: 0.83em; top: 3.9em; z-index: 4; width: 15em; padding: 0.5em 0.6em; box-sizing: border-box;
+  border-radius: 0.6em; background: var(--rd-panel); border: 1px solid var(--rd-line); font-size: 0.85em;
+}
+#rd-ringmenu .t { font-weight: 700; color: #fff; margin-bottom: 0.35em; }
+#rd-ringmenu .t span { float: right; font-weight: 400; color: var(--rd-muted); }
+#rd-ringmenu .r { display: flex; align-items: center; height: 1.9em; }
+#rd-ringmenu .dot { width: 0.55em; height: 0.55em; border-radius: 50%; border: 0.12em solid #7fe0a0; margin-right: 0.45em; }
+#rd-ringmenu .icao { width: 3.4em; font-weight: 700; color: #e6e9f0; }
+#rd-ringmenu input {
+  box-sizing: border-box; height: 1.6em; padding: 0 0.35em; border-radius: 0.3em; border: 1px solid var(--rd-line);
+  background: #0b0e13; color: #e6e9f0; font: inherit; font-size: 1em; outline: none;
+}
+#rd-ringmenu input:focus { border-color: #3f7a55; }
+#rd-ringmenu input.nm { width: 3.6em; text-align: right; }
+#rd-ringmenu input.icao { width: 4.4em; margin-right: 0.35em; text-transform: uppercase; }
+#rd-ringmenu .u { color: var(--rd-muted); margin-left: 0.3em; }
+#rd-ringmenu .x { margin-left: auto; width: 1.4em; text-align: center; color: var(--rd-muted); cursor: pointer; border-radius: 0.3em; font-size: 1.1em; }
+#rd-ringmenu .x:hover { color: #ff9b7a; background: rgba(255, 255, 255, 0.06); }
+#rd-ringmenu .go { margin-left: auto; padding: 0 0.5em; height: 1.6em; line-height: 1.6em; border-radius: 0.3em; cursor: pointer;
+  background: #1f3a2a; color: #9ff0bd; font-weight: 700; }
+#rd-ringmenu .go:hover { background: #2a4f39; }
+#rd-ringmenu .h { margin-top: 0.35em; color: var(--rd-muted); font-size: 0.9em; line-height: 1.3; }
+#rd-ringmenu .h b { color: #ff9b7a; font-weight: 600; }
+/* the airport card's ring button (left of the X) and its row */
+#rd-card .rr { position: absolute; right: 2em; top: 0.3em; height: 1.4em; display: flex; align-items: center; padding: 0 0.25em;
+  border-radius: 0.3em; cursor: pointer; color: #7fe0a0; font-weight: 700; z-index: 2; }
+#rd-card .rr:hover { background: rgba(255, 255, 255, 0.08); }
+#rd-card .rr svg { width: 1.1em; height: 1.1em; fill: none; stroke: var(--rd-muted); stroke-width: 2.2; }
+#rd-card .rr svg .c { fill: var(--rd-muted); stroke: none; }
+#rd-card .rr.on svg { stroke: #7fe0a0; }
+#rd-card .rr.on svg .c { fill: #7fe0a0; }
+#rd-card .rr .v { margin-left: 0.3em; font-size: 0.9em; }
+/* only the airport's own title line makes room for the ring button (not the controllers' callsigns below it) */
+#rd-card.ap > .cs { padding-right: 2.6em; }
+#rd-card.ap.ringon { min-width: 17em; }
+#rd-card.ap.ringon > .cs { padding-right: 7.5em; }
+#rd-card .rrow { display: flex; flex-wrap: wrap; align-items: center; margin: 0.2em 0; }
+#rd-card .rchip { margin: 0.1em 0.3em 0.1em 0; padding: 0 0.35em; border-radius: 0.3em; background: #1f3a2a; color: #9ff0bd; font-weight: 600; }
+#rd-card .rchip i { font-style: normal; margin-left: 0.25em; cursor: pointer; color: var(--rd-muted); }
+#rd-card .rchip i:hover { color: #ff9b7a; }
+#rd-card .rrow input { box-sizing: border-box; width: 3.6em; height: 1.5em; padding: 0 0.3em; border-radius: 0.3em; border: 1px solid var(--rd-line);
+  background: #0b0e13; color: #e6e9f0; font: inherit; outline: none; text-align: right; }
+#rd-card .rrow .ok { margin-left: 0.3em; padding: 0 0.4em; border-radius: 0.3em; background: #1f3a2a; color: #9ff0bd; cursor: pointer; font-weight: 700; }
+#rd-card .rhint { color: var(--rd-muted); font-size: 0.9em; }
 /* detach / dock: drawn with CSS boxes (no font glyph). In the card: a small window with an arrow out;
    in the detached window (.docked off): a box with a bar at the bottom = "put back in the card" */
 #rd-detach {
   margin-left: 0.4em; width: 2.1em; height: 2.1em; border-radius: 0.5em; cursor: pointer; position: relative;
-  background: rgba(16, 21, 29, 0.85); border: 1px solid #222b37;
+  background: var(--rd-bg); border: 1px solid var(--rd-line);
 }
-#rd-detach:hover { background: rgba(32, 42, 56, 0.95); border-color: #2f5672; }
-#rd-detach i.box { position: absolute; left: 0.45em; top: 0.6em; width: 0.8em; height: 0.7em; border: 0.12em solid #cfd8e3; border-radius: 0.1em; }
-#rd-detach i.out { position: absolute; left: 0.95em; top: 0.38em; width: 0.65em; height: 0.12em; background: #8fd3ff; transform: rotate(-45deg); }
+#rd-detach:hover { background: var(--rd-hover); border-color: var(--rd-acc-line); }
+#rd-detach i.box { position: absolute; left: 0.45em; top: 0.6em; width: 0.8em; height: 0.7em; border: 0.12em solid var(--rd-text); border-radius: 0.1em; }
+#rd-detach i.out { position: absolute; left: 0.95em; top: 0.38em; width: 0.65em; height: 0.12em; background: var(--rd-acc); transform: rotate(-45deg); }
 #rd-radar.detached #rd-detach i.out { left: 0.62em; top: 0.98em; width: 0.6em; transform: none; }
 /* expand / shrink: a large square (make it big) or, when big (.big on #rd-radar), a small one (make it small) */
 #rd-expand {
   margin-left: 0.4em; width: 2.1em; height: 2.1em; border-radius: 0.5em; cursor: pointer; position: relative;
-  background: rgba(16, 21, 29, 0.85); border: 1px solid #222b37;
+  background: var(--rd-bg); border: 1px solid var(--rd-line);
 }
-#rd-expand:hover { background: rgba(32, 42, 56, 0.95); border-color: #2f5672; }
+#rd-expand:hover { background: var(--rd-hover); border-color: var(--rd-acc-line); }
 /* arrows pointing out (make it bigger) or, when big, pointing in (make it smaller) */
-#rd-expand svg { position: absolute; left: 0.35em; top: 0.35em; width: 1.4em; height: 1.4em; fill: none; stroke: #cfd8e3;
+#rd-expand svg { position: absolute; left: 0.35em; top: 0.35em; width: 1.4em; height: 1.4em; fill: none; stroke: var(--rd-text);
   stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-#rd-expand svg.sh { display: none; stroke: #8fd3ff; }
+#rd-expand svg.sh { display: none; stroke: var(--rd-acc); }
 #rd-radar.big #rd-expand svg.ex { display: none; }
 #rd-radar.big #rd-expand svg.sh { display: block; }
 #rd-radar .hidden { display: none !important; }
@@ -80,34 +149,34 @@
 #rd-card {
   /* left: set by radar.js just right of the button column */
   position: absolute; left: 5em; bottom: 2.4em; min-width: 12.5em; max-width: 18.5em; padding: 0.4em 0.6em;   /* room for a long callsign + frequency + the X */
-  border-radius: 0.6em; background: rgba(14, 19, 26, 0.94); border: 1px solid #2a3442; line-height: 1.25;
+  border-radius: 0.6em; background: var(--rd-panel); border: 1px solid var(--rd-line); line-height: 1.25;
   max-height: 55%; overflow-y: auto; font-size: 0.7em;
 }
 #rd-card .cs { font-size: 1.2em; font-weight: 700; color: #fff; padding-right: 1.4em; }
-#rd-card .cs .nm { font-size: 0.7em; font-weight: 400; color: #8d9bad; margin-left: 0.5em; }
-#rd-card .sub { color: #8d9bad; }
+#rd-card .cs .nm { font-size: 0.7em; font-weight: 400; color: var(--rd-muted); margin-left: 0.5em; }
+#rd-card .sub { color: var(--rd-muted); }
 #rd-card .row { display: flex; justify-content: space-between; }
 #rd-card .row b { color: #fff; font-weight: 600; }
 #rd-card .freq { color: #7fe0a0; font-weight: 600; margin-left: 0.8em; }
-#rd-card .ctl { padding: 0.25em 0; border-top: 1px solid #222b37; }
+#rd-card .ctl { padding: 0.25em 0; border-top: 1px solid var(--rd-line); }
 /* fold arrow before a controller's / ATIS's callsign: down = details shown, right = folded */
 #rd-card .row.foldable { cursor: pointer; }
 #rd-card .row.foldable .cs { display: flex; align-items: center; }
 #rd-card .fold { display: inline-block; width: 0; height: 0; margin-right: 0.4em; border-style: solid;
-  border-width: 0.38em 0.3em 0 0.3em; border-color: #8d9bad transparent transparent transparent; }
-#rd-card .fold.shut { border-width: 0.3em 0 0.3em 0.38em; border-color: transparent transparent transparent #8d9bad; }
+  border-width: 0.38em 0.3em 0 0.3em; border-color: var(--rd-muted) transparent transparent transparent; }
+#rd-card .fold.shut { border-width: 0.3em 0 0.3em 0.38em; border-color: transparent transparent transparent var(--rd-muted); }
 #rd-card .row.foldable:hover .fold { border-top-color: #e6e9f0; }
 #rd-card .row.foldable:hover .fold.shut { border-top-color: transparent; border-left-color: #e6e9f0; }
 #rd-card .ctl:first-of-type { border-top: 0; }
 /* controller information: shown in full, one VATSIM line per line. An ATIS is folded to two lines (max-height,
    Coherent has no line-clamp) with a "Show full ATIS" link. A tall card scrolls instead of leaving the radar */
 #rd-card { max-height: calc(100% - 3.6em); overflow-y: auto; box-sizing: border-box; }
-#rd-card .atis { color: #8d9bad; font-size: 0.92em; line-height: 1.25em; white-space: normal; max-height: 2.5em; overflow: hidden; }
+#rd-card .atis { color: var(--rd-muted); font-size: 0.92em; line-height: 1.25em; white-space: normal; max-height: 2.5em; overflow: hidden; }
 #rd-card .atis.open { max-height: none; }
 #rd-card .atis-more { margin-top: 0.15em; font-size: 0.85em; font-weight: bold; color: #7fb4e6; cursor: pointer; }
 #rd-card .x { position: absolute; right: 0.35em; top: 0.3em; width: 1.4em; height: 1.4em; cursor: pointer; z-index: 2; border-radius: 0.3em; }
 #rd-card .x:hover { background: rgba(255, 255, 255, 0.08); }
-#rd-card .x i { position: absolute; left: 50%; top: 50%; width: 0.9em; height: 0.13em; margin: -0.065em 0 0 -0.45em; background: #a9b6c6; }
+#rd-card .x i { position: absolute; left: 50%; top: 50%; width: 0.9em; height: 0.13em; margin: -0.065em 0 0 -0.45em; background: var(--rd-muted); }
 #rd-card .x:hover i { background: #e6e9f0; }
 /* the card's first line (callsign / frequency) leaves room for the close button */
 /* the X spans 0.35 to 1.75em from the right edge. (.ctl.first too: the controller block's own padding rule would
@@ -118,7 +187,7 @@
 
 #rd-perf {
   position: absolute; right: 0.83em; top: 3.4em; padding: 0.5em 0.75em; border-radius: 0.5em; white-space: pre; cursor: pointer;
-  background: rgba(16, 21, 29, 0.85); border: 1px solid #222b37;
+  background: var(--rd-bg); border: 1px solid var(--rd-line);
   font-family: "RobotoMono-Regular", Consolas, monospace; font-size: 0.92em; color: #9fb3c8;
 }
 #rd-credit { position: absolute; right: 0.5em; bottom: 0.33em; font-size: 0.75em; color: #5d6876; pointer-events: none;
@@ -132,5 +201,12 @@
 #rd-tools .btn.tog.target { display: flex; align-items: center; justify-content: center; line-height: normal; }
 #rd-tools .btn.target svg { width: 1.7em; height: 1.7em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #rd-tools .btn.target svg .dot { fill: none; }
-#rd-tools .btn.tog.target.half { color: #8fd3ff; }
+#rd-tools .btn.tog.target.half { color: var(--rd-acc); }
 #rd-tools .btn.tog.target.on svg .dot { fill: currentColor; }
+
+/* (1.5.0) small square buttons with symbols: about 40% of the old ones (3.2 x 2.6 em, text) */
+#rd-tools .btn.ico, #rd-tools .btn.tog.target { display: flex; align-items: center; justify-content: center; font-size: 1em;
+  width: 1.65em; height: 1.65em; line-height: normal; margin-bottom: 0.25em; border-radius: 0.4em; padding: 0; }
+#rd-tools .btn.ico svg, #rd-tools .btn.target svg { width: 1.1em; height: 1.1em; fill: none; stroke: currentColor; stroke-width: 2.2;
+  stroke-linecap: round; stroke-linejoin: round; }
+#rd-tools .sep { height: 0.3em; }

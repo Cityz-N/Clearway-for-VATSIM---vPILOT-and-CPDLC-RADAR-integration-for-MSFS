@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PANEL = ROOT / "msfs-panel"
 DIST = ROOT / "dist" / "clearway-panel"
 PACKAGE_NAME = "clearway-panel"
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 # MSFS package manifests use X.Y.Z; a fourth part (hotfix) is dropped there
 MANIFEST_VERSION = ".".join(VERSION.split(".")[:3])
 
@@ -60,6 +60,16 @@ def compile_spb() -> Path:
     cache.mkdir(exist_ok=True)
     shutil.copy2(spbs[0], cache / "clearway-panel.spb")
     return cache / "clearway-panel.spb"
+
+
+# (1.5.0) panel frame variants. MSFS gives a toolbar panel the frame its definition asks for (a % of the UI height,
+# pinned to the right) and doesn't fit it to the screen, so ultrawide screens need their own definition:
+#   16x9  defaultWidth="178"  (msfs-panel/PackageSources/clearway-panel.xml, compiled/clearway-panel.spb)
+#   21x9  defaultWidth="237"  -> compiled/clearway-panel-21x9.spb   (2560x1080 = 2.37, 3440x1440 = 2.39)
+#   32x9  defaultWidth="355"  -> compiled/clearway-panel-32x9.spb   (5120x1440 = 3.56)
+# To make one: set defaultWidth in the XML, build (this script without --assemble, or Dev Mode > Project Editor >
+# Build All), copy the built .spb to the name above, then put defaultWidth back to 178.
+VARIANTS = {"16x9": "clearway-panel.spb", "21x9": "clearway-panel-21x9.spb", "32x9": "clearway-panel-32x9.spb"}
 
 
 def sync_radar() -> None:
@@ -127,9 +137,17 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--install", action="store_true", help="copy the package into the MSFS Community folder")
     ap.add_argument("--assemble", action="store_true", help="re-use msfs-panel/compiled/clearway-panel.spb")
+    # (1.5.0) ultrawide versions: the same package with a wider panel frame (compiled separately, see VARIANTS)
+    ap.add_argument("--variant", choices=sorted(VARIANTS), default="16x9", help="panel frame: 16x9 (default), 21x9 or 32x9")
     args = ap.parse_args()
 
     sync_radar()
+    if args.variant != "16x9":
+        spb = PANEL / "compiled" / VARIANTS[args.variant]
+        if not spb.exists():
+            sys.exit(f"Missing {spb}: compile the {args.variant} panel definition first (see VARIANTS in build_panel.py).")
+        assemble(spb)
+        return
     spb = PANEL / "compiled" / "clearway-panel.spb"
     if args.assemble and not spb.exists():
         # pick up a build made in the sim (Dev Mode > Project Editor > Build All)

@@ -37,6 +37,8 @@
   var atcOpenRows = {};    // controllers whose information is expanded
   var com = null;          // COM radios read from the sim
   var comPower = null;     // { 1: bool, 2: bool }: each radio has power (sim only)
+  var vpClosingUntil = 0;  // vPilot close confirmed: the power button stays yellow until it's gone (ms timestamp)
+  var vpOpenSince = 0;     // when vPilot's process was first seen running (yellow until its plugin reports in)
   var xpdr = null;         // the aircraft's transponder state in the sim (see simTransponder)
   var lastModecN = null, lastIdentN = null;   // Clearway's Mode C / ident request counters (see renderVpilot)
   var comSentAt = 0, comSentKey = "";
@@ -159,6 +161,9 @@
       // of `com` (what Clearway is sent); an aircraft that doesn't report it counts as powered
       var st = function (n) { var v = SimVar.GetSimVarValue("COM STATUS:" + n, "Enum"); return typeof v !== "number" || isNaN(v) || v === 0; };
       comPower = { 1: st(1), 2: st(2) };
+      // (1.5.0) squawking 7700: the whole panel turns red. Read as Bco16 (gives 7700); the raw BCD value is 0x7700
+      var sq = SimVar.GetSimVarValue("TRANSPONDER CODE:1", "Bco16");
+      setEmergency(sq === 7700 || sq === 0x7700);
     } catch (e) { return; }
     var key = JSON.stringify(com), now = Date.now();
     if (reachable && (key !== comSentKey || now - comSentAt > 5000)) {   // share with Clearway (phone)
@@ -166,6 +171,80 @@
       request("POST", "/api/com", com, null);
     }
     updateFreqChip();
+  }
+
+  // 7700: the panel's colours turn red (over whichever theme is set) and a "7700" tag shows next to your callsign
+  var emergency = false;
+  function setEmergency(on) {
+    if (on === emergency) return;
+    emergency = on;
+    el("cw-root").classList.toggle("emergency", on);
+    var tag = el("cw-7700");
+    if (tag) tag.classList.toggle("hidden", !on);
+    applyTheme();                                       // the 7700 red wins over edited colours too
+  }
+
+  // ------------------------------------------------------------ themes (1.5.0: editable colours, Custom)
+  // Dark / Black / Light keep their stylesheet colours until edited in Settings; an edited theme (and Custom, always)
+  // gets a generated style over them: background, boxes, accent, text, icon background and symbol, transparency.
+  // The defaults here are what the editor shows (the 1.4.0 contrast pass colours).
+  var THEME_DEFAULTS = {
+    dark: { bg: "#050e17", box: "#0b1826", accent: "#96aaff", text: "#e6e9f0", icon_bg: "#0b1826", icon_fg: "#5b9bd5", alpha: 0.75, sea: "#172131", land: "#39424f" },
+    black: { bg: "#000000", box: "#0e0e0e", accent: "#96aaff", text: "#e6e9f0", icon_bg: "#0e0e0e", icon_fg: "#cfcfcf", alpha: 0.75, sea: "#161616", land: "#363636" },
+    light: { bg: "#e4e8f0", box: "#eff1f5", accent: "#3553d4", text: "#151a26", icon_bg: "#eff1f5", icon_fg: "#3d7bbf", alpha: 0.9, sea: "#2f4052", land: "#56616d" },
+    custom: { bg: "#1a1033", box: "#2a1d4d", accent: "#b69cff", text: "#efeaff", icon_bg: "#2a1d4d", icon_fg: "#b69cff", alpha: 0.6, sea: "#1b1430", land: "#3b3352" }
+  };
+  function rgbOf(h) { h = String(h || "#000000"); return [parseInt(h.substr(1, 2), 16) || 0, parseInt(h.substr(3, 2), 16) || 0, parseInt(h.substr(5, 2), 16) || 0]; }
+  function rgba(h, a) { var c = rgbOf(h); return "rgba(" + c[0] + ", " + c[1] + ", " + c[2] + ", " + a + ")"; }
+  function mixHex(a, b, t) {
+    var x = rgbOf(a), y = rgbOf(b), o = "#";
+    for (var i = 0; i < 3; i++) o += ("0" + Math.round(x[i] + (y[i] - x[i]) * t).toString(16)).slice(-2);
+    return o;
+  }
+  function lum(h) {
+    var c = rgbOf(h).map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  var themeKey = "";
+  function applyTheme() {
+    var st = state && state.settings, root = el("cw-root");
+    if (!st) return;
+    var t = st.theme === "light" || st.theme === "black" || st.theme === "custom" ? st.theme : "dark";
+    var edits = (st.theme_colors || {})[t], on = !emergency && (t === "custom" || (edits && Object.keys(edits).length > 0));
+    // (1.5.0) the light-background styling (badges, greens, the active tab...) follows the colours actually used: a
+    // light custom theme gets it too, and a Light theme edited dark doesn't (they washed out on a light background)
+    var bgNow = on ? ((edits && edits.bg) || THEME_DEFAULTS[t].bg) : THEME_DEFAULTS[t].bg;
+    root.classList.toggle("light", lum(bgNow) > 0.4);
+    root.classList.toggle("black", t === "black");
+    var key = on ? t + JSON.stringify(edits || {}) : "";
+    root.classList.toggle("cw-themed", on);
+    if (key === themeKey) return;
+    themeKey = key;
+    var tag = document.getElementById("cw-theme-style");
+    if (!tag) { tag = document.createElement("style"); tag.id = "cw-theme-style"; document.head.appendChild(tag); }
+    if (!on) { tag.textContent = ""; return; }
+    var c = {}, d = THEME_DEFAULTS[t];
+    for (var k in d) c[k] = (edits && edits[k] !== undefined) ? edits[k] : d[k];
+    var P = "#cw-root.cw-themed", I = " !important; ";
+    // muted text (status lines, times, hints): the text colour tinted with the accent, so it follows the theme too
+    var muted = mixHex(mixHex(c.text, c.accent, 0.35), c.bg, 0.25), onAccent = lum(c.accent) > 0.4 ? "#0b1020" : "#ffffff";
+    tag.textContent =
+      P + " { --bg: " + c.bg + I + "--surface: " + c.box + I + "--surface-2: " + mixHex(c.box, c.text, 0.08) + I +
+        "--line: " + mixHex(c.box, c.text, 0.14) + I + "--text: " + c.text + I + "--muted: " + muted + I +
+        "--accent: " + c.accent + I + "--accent-soft: " + rgba(c.accent, 0.16) + I + "--var-text: " + mixHex(c.accent, c.text, 0.3) + I +
+        "--bubble: " + c.icon_bg + I + "--bubble-line: " + c.icon_fg + I + "--glyph-off: " + c.icon_fg + I + "--icon-blue: " + c.icon_fg + I +
+        "--on-accent: " + onAccent + I + "--unread: " + mixHex(c.bg, "#f5b14c", 0.14) + I + "}\n" +
+      [" #cw-card", " #cw-peek", " #cw-com-pop", " #cw-notes-win", " #cw-radar-win"].map(function (s) { return P + s; }).join(", ") +
+        " { --bg: " + rgba(c.bg, c.alpha) + I + "--surface: " + rgba(c.box, 0.5) + I + "--surface-2: " + rgba(mixHex(c.box, c.text, 0.1), 0.8) + I +
+        "--text: " + c.text + I + "--muted: " + muted + I + "--accent: " + c.accent + I + "--unread: " + rgba(mixHex(c.bg, "#f5b14c", 0.3), 0.5) + I + "}\n" +
+      P + " #cw-card.radar-tab { --bg: " + c.bg + I + "--surface: " + c.box + I + "}\n" +
+      P + " #cw-peek { background-color: " + rgba(c.bg, Math.max(0.85, c.alpha)) + I + "}\n" +
+      P + " #cw-com-pop { background-color: " + mixHex(c.bg, c.box, 0.5) + I + "}\n" +
+      // the radar's buttons, readout, cards and ring menu (radar.css --rd-* variables)
+      P + " #rd-radar { --rd-bg: " + rgba(mixHex(c.bg, c.box, 0.5), 0.88) + I + "--rd-panel: " + rgba(c.bg, 0.94) + I +
+        "--rd-hover: " + rgba(mixHex(c.box, c.text, 0.12), 0.95) + I + "--rd-line: " + mixHex(c.box, c.text, 0.16) + I +
+        "--rd-acc-line: " + mixHex(c.box, c.accent, 0.5) + I + "--rd-text: " + c.text + I + "--rd-acc: " + c.accent + I +
+        "--rd-muted: " + muted + I + "--rd-dim: " + mixHex(c.text, c.bg, 0.5) + I + "}\n";
   }
 
   // The aircraft's transponder in the sim: 0 off, 1 standby, 2 test, 3 on, 4 altitude (= Mode C)
@@ -316,10 +395,8 @@
 
   // ------------------------------------------------------------ render: shell
   function render() {
-    if (state && state.settings) {
-      el("cw-root").classList.toggle("light", state.settings.theme === "light");
-      el("cw-root").classList.toggle("black", state.settings.theme === "black");
-    }
+    applyTheme();
+    checkPanelReset();
     var vpCount = reachable && state ? (state.unacked_vpilot || 0) : 0;
     var cpCount = reachable && state ? (state.unacked_cpdlc || 0) : 0;
     var bubble = el("cw-bubble");
@@ -364,6 +441,7 @@
     if (bcs.textContent !== cs) bcs.textContent = cs;
     bcs.classList.toggle("hidden", !cs);
     setDot("cw-ndot-vp", paused ? 0 : vpMine); setDot("cw-ndot-cp", paused ? 0 : cpCount);
+    checkUrgent();                                                    // "contact me" / SELCAL: their peek opens by itself
     setDot("cw-tdot-vp", vpCount); setDot("cw-tdot-cp", cpCount);
 
     renderVpilot();
@@ -397,9 +475,12 @@
     el("cw-card").classList.toggle("radar-tab", radarHere);
     el("cw-notes").classList.toggle("hidden", !notesOpen);
     el("cw-notes-btn").classList.toggle("on", notesOpen);
+    if (!notesOpen || notesDetached) resetNotesGrow();   // leaving the notepad: the card's normal size again
     lastChatKey = "";
     if (state) render();
+    if (t === "cpdlc" && reqOpen && !notesOpen) renderFields();   // the request fields measured once they show
     placeCard();
+    updateCardGrip();
   }
 
   // ------------------------------------------------------------ render: vPilot
@@ -465,9 +546,16 @@
     conn.classList.toggle("danger", !!vp.connected);
     conn.classList.toggle("disabled", !vp.active);
     // vPilot start button: red while vPilot is closed (click starts it in the background), green once it's open
+    // power button: red (closed, click to start) > yellow (starting) > green (open, click to close) > yellow (closing) > red
     var run = el("cw-vp-run"), open = vp.running === true;
-    run.className = "cw-mini cw-vp-run" + (!reachable || vp.running == null ? " hidden" : open ? " open" : vp.starting ? " starting" : "");
-    run.title = open ? "vPilot is open: click to close it" : vp.starting ? "vPilot is starting..." : "vPilot is closed: click to start it in the background";
+    if (!open || Date.now() > vpClosingUntil) vpClosingUntil = 0;           // closed (or gave up waiting): no longer closing
+    // vPilot's window is up a few seconds before its plugin reports in ("vPilot not opened" -> "vPilot offline"): stay
+    // yellow until it does (30 s at most, so a missing plugin doesn't leave it yellow forever)
+    if (!open) vpOpenSince = 0; else if (!vpOpenSince) vpOpenSince = Date.now();
+    var loading = open && !vp.active && Date.now() - vpOpenSince < 30000;
+    var closing = open && vpClosingUntil > 0, wait = vp.starting || loading || closing;
+    run.className = "cw-mini cw-vp-run" + (!reachable || vp.running == null ? " hidden" : wait ? " starting" : open ? " open" : "");
+    run.title = closing ? "vPilot is closing..." : vp.starting || loading ? "vPilot is starting..." : open ? "vPilot is open: click to close it" : "Start vPilot";
     if (!open && !el("cw-vp-close-ask").classList.contains("hidden")) el("cw-vp-close-ask").classList.add("hidden");   // already gone
     // Mode C / standby / ident asked from anywhere (phone, dot command, these buttons): set the aircraft's
     // transponder in the sim too, since vPilot follows it. The first state seen is only remembered.
@@ -556,9 +644,24 @@
     }
   }
 
+  // Grey status lines ("Connecting...", "Connected to Hoppie as ...") fade out 30 s after they arrive: they don't count
+  // in the card's height, so left on screen they pushed real messages out of view. (In the panel only: the phone keeps
+  // them.) Message times are in ms
+  var SYS_SHOW_MS = 30000;
+  function sysOld(m) { return Date.now() - (m.ts || 0) > SYS_SHOW_MS + 1000 ? " gone" : ""; }
+  function fadeSysLines() {
+    var lines = document.getElementsByClassName("cw-sys"), now = Date.now(), changed = false;
+    for (var i = 0; i < lines.length; i++) {
+      var age = now - (+lines[i].getAttribute("data-ts") || 0);
+      if (age > SYS_SHOW_MS + 1000 && !lines[i].classList.contains("gone")) { lines[i].classList.add("gone"); changed = true; }
+      else if (age > SYS_SHOW_MS && !lines[i].classList.contains("fading")) lines[i].classList.add("fading");
+    }
+    if (changed && expanded) placeCard();
+  }
+
   function vpBubble(m) {
     var time = "<span class=\"cw-time\">" + utc(m.ts) + "</span>";
-    if (m.kind === "vsys") return "<div class=\"cw-sys\">" + esc(m.text) + "</div>";
+    if (m.kind === "vsys") return "<div class=\"cw-sys" + sysOld(m) + "\" data-ts=\"" + (m.ts || 0) + "\">" + esc(m.text) + "</div>";
     if (m.kind === "vinfo") return "<div class=\"cw-vinfo\"><div class=\"cw-meta\"><span class=\"cw-station\">" + esc(m.station) + "</span>" + time + "</div><div class=\"cw-pre\">" + esc(m.text) + "</div></div>";
     if (m.kind === "selcal") return "<div class=\"cw-valert selcal\"><b>SELCAL</b> " + esc(m.station) + " - " + esc(m.text) + "</div>";
     if (m.kind === "broadcast") return "<div class=\"cw-valert broadcast\"><b>Broadcast</b> " + esc(m.station) + ": " + esc(m.text) + "</div>";
@@ -780,7 +883,9 @@
       notice.innerHTML = "Start <b>Clearway</b> on this PC to use CPDLC.";
       notice.classList.remove("hidden");
     } else if (state && state.status !== "online") {
-      notice.innerHTML = state.error ? esc(state.error) : "Not connected to Hoppie. Open Clearway's Settings and press <b>Connect</b>.";
+      // (1.5.0) one short line; a longer error is cut with "...", its full text on hover
+      notice.innerHTML = state.error ? esc(state.error) : "Hoppie not connected &middot; Clearway Settings &rsaquo; <b>Connect</b>";
+      notice.title = state.error ? plain(state.error) : "Not connected to Hoppie. Open Clearway's Settings and press Connect.";
       notice.classList.remove("hidden");
     } else {
       notice.classList.add("hidden");
@@ -797,7 +902,7 @@
     var html = "";
     for (var i = 0; i < msgs.length; i++) {
       var m = msgs[i];
-      if (m.dir === "sys") { html += "<div class=\"cw-sys\">" + esc(m.text) + " <span class=\"cw-del\" data-del=\"" + m.id + "\">" + X_ICON + "</span></div>"; continue; }
+      if (m.dir === "sys") { html += "<div class=\"cw-sys" + sysOld(m) + "\" data-ts=\"" + (m.ts || 0) + "\">" + esc(m.text) + " <span class=\"cw-del\" data-del=\"" + m.id + "\">" + X_ICON + "</span></div>"; continue; }
       var unread = m.dir === "in" && !m.acked;
       var label = m.tag || { cpdlc: "CPDLC", telex: "TELEX" }[m.kind] || "INFO";
       var actions = "";
@@ -845,22 +950,27 @@
 
   // ------------------------------------------------------------ CPDLC request forms
   var FORMS = {
-    logon: [{ k: "station", ph: "ATC station, e.g. EGGX" }],
-    level: [{ k: "fl", ph: "Flight level, e.g. 370" }],
-    direct: [{ k: "fix", ph: "Waypoint" }],
+    // lb: the label shown inside the box on the left (1.5.0); ph: the hint while it's empty
+    logon: [{ k: "station", lb: "STATION", ph: "ATC unit, e.g. EGGX" }],
+    level: [{ k: "fl", lb: "LEVEL", ph: "Flight level, e.g. 370" }],
+    direct: [{ k: "fix", lb: "DIRECT TO", ph: "Waypoint" }],
     text: [{ k: "text", ph: "Free text to current ATC" }],
     pdc: [
-      { k: "station", ph: "Station, e.g. EGLL", half: true }, { k: "type", ph: "Aircraft type (B77W)", half: true },
-      { k: "dep", ph: "From", half: true }, { k: "arr", ph: "To", half: true },
-      { k: "stand", ph: "Stand", half: true }, { k: "atis", ph: "ATIS letter", half: true }
+      { k: "station", lb: "STATION", ph: "e.g. EGLL", half: true }, { k: "type", lb: "AIRCRAFT", ph: "B77W", half: true },
+      { k: "dep", lb: "FROM", ph: "", half: true }, { k: "arr", lb: "TO", ph: "", half: true },
+      { k: "stand", lb: "STAND", ph: "", half: true }, { k: "atis", lb: "ATIS", ph: "", half: true }
     ],
+    // (1.5.0 user) three columns, with destination, max level, route and TMI
     oceanic: [
-      { k: "station", ph: "Station, e.g. EGGX", half: true }, { k: "entry", ph: "Entry point", half: true },
-      { k: "eta", ph: "ETA UTC, e.g. 1430", half: true }, { k: "mach", ph: "Mach, e.g. 84", half: true },
-      { k: "fl", ph: "FL, e.g. 370", half: true }, { k: "rmk", ph: "Remarks (optional)", half: true }
+      { k: "station", lb: "STATION", ph: "EGGX", w: "third" }, { k: "entry", lb: "ENTRY", ph: "point", w: "third" },
+      { k: "eta", lb: "ETA", ph: "1430", w: "third" },
+      { k: "mach", lb: "MACH", ph: "84", w: "third" }, { k: "fl", lb: "ENTRY FL", ph: "370", w: "third" },
+      { k: "maxfl", lb: "MAX FL", ph: "390", w: "third" },
+      { k: "route", lb: "ROUTE", ph: "NAT track or random route", w: "two" }, { k: "tmi", lb: "TMI", ph: "330", w: "third" },
+      { k: "dest", lb: "DEST", ph: "ICAO", w: "third" }, { k: "rmk", lb: "REMARKS", ph: "optional", w: "two" }
     ],
-    telex: [{ k: "station", ph: "Station or callsign" }, { k: "text", ph: "Message" }],
-    wx: [{ k: "icao", ph: "Airport ICAO, e.g. EGLL" }]
+    telex: [{ k: "station", lb: "TO", ph: "Station or callsign" }, { k: "text", ph: "Message" }],
+    wx: [{ k: "icao", lb: "AIRPORT", ph: "ICAO, e.g. EGLL" }]
   };
   var formVals = {};
 
@@ -875,6 +985,7 @@
       if (!v.arr && f.arrival) v.arr = f.arrival;
     }
     if (kind === "oceanic" && !v.fl && f.cruise) v.fl = String(f.cruise).replace(/^FL/i, "").slice(0, 3);
+    if (kind === "oceanic" && !v.dest && f.arrival) v.dest = f.arrival;      // destination from your flight plan
     return v;
   }
 
@@ -886,24 +997,48 @@
         html += "<textarea id=\"cw-f-text\" data-k=\"text\" rows=\"1\" class=\"cw-input cw-field cw-grow\" placeholder=\"" + fd.ph + "\">" + esc(vals.text || "") + "</textarea>";
         continue;
       }
-      html += "<input id=\"cw-f-" + fd.k + "\" data-k=\"" + fd.k + "\" class=\"cw-input cw-field" + (fd.half ? " half" : "") +
-        "\" type=\"text\" placeholder=\"" + fd.ph + "\" value=\"" + esc(vals[fd.k] || "") + "\"/>";
+      html += "<div class=\"rq-f" + (fd.half ? " half" : fd.w ? " " + fd.w : "") + "\">" + (fd.lb ? "<label>" + fd.lb + "</label>" : "") +
+        "<input id=\"cw-f-" + fd.k + "\" data-k=\"" + fd.k + "\" class=\"cw-input cw-field" + (fd.lb ? " lb" : "") +
+        "\" type=\"text\" placeholder=\"" + fd.ph + "\" value=\"" + esc(vals[fd.k] || "") + "\"/></div>";
     }
     var box = el("cw-fields");
     if (keyboardOwner && keyboardOwner.indexOf("cw-f-") === 0) releaseKeyboard();
     box.innerHTML = html;
     var inputs = box.querySelectorAll("input, textarea");
     for (var j = 0; j < inputs.length; j++) wireInput(inputs[j], send);
-    var grow = el("cw-f-text"); if (grow) autoGrow(grow);
+    // (1.5.0) each box leaves just enough room for its own label (narrow 3-column boxes keep space for the value)
+    var labs = box.querySelectorAll(".rq-f > label");
+    for (var li = 0; li < labs.length; li++) {
+      var inp = labs[li].nextElementSibling;
+      if (inp && labs[li].offsetWidth) inp.style.paddingLeft = (labs[li].offsetLeft + labs[li].offsetWidth + 7) + "px";
+    }
+    // every request type the same row height: remember a field's height, and give the free-text box and the WX row
+    // exactly that (they changed the card's height by a few pixels, 1.5.0 test)
+    var anyF = box.querySelector(".rq-f");
+    if (anyF && anyF.offsetHeight) fieldH = anyF.offsetHeight;
+    var grow = el("cw-f-text"); if (grow) { grow.style.minHeight = fieldH ? fieldH + "px" : ""; autoGrow(grow); }
+    var sub = el("cw-wx-kind"), subBtns = sub.children;
+    for (var si = 0; si < subBtns.length; si++) subBtns[si].style.height = fieldH ? fieldH + "px" : "";
     placeCard();
   }
+  var fieldH = 0;   // a request field's height in px (the first form shown sets it)
 
+  // (1.5.0) the request view in place of the message list (and the card resizes to fit it)
+  function setReqOpen(on) {
+    reqOpen = on;
+    if (!on) reqHoldH = 0;                                // closed: the card goes back to its usual height
+    el("cw-req").classList.toggle("hidden", !on);
+    el("cw-pane-cpdlc").classList.toggle("rq-on", on);
+    el("rq-open").classList.toggle("on", on);
+    save("CLEARWAY_REQ_OPEN", on);
+    if (!on && keyboardOwner && keyboardOwner.indexOf("cw-f-") === 0) releaseKeyboard();
+    if (on && reqKind) renderFields();                     // measured now that it shows (labels, row height)
+    placeCard();
+  }
   function setReqKind(v) {
     reqKind = v;
-    ["cw-req-kind", "cw-req-kind2"].forEach(function (id) {
-      var btns = el(id).children;
-      for (var i = 0; i < btns.length; i++) btns[i].classList.toggle("on", attr(btns[i], "data-v") === v);
-    });
+    var btns = el("cw-req-kind").children;
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle("on", attr(btns[i], "data-v") === v);
     el("cw-wx-kind").classList.toggle("hidden", v !== "wx");
     renderFields();
     updateSendLabel();
@@ -924,8 +1059,8 @@
   function autoGrow(ta) {
     ta.style.height = "auto";
     var lineH = parseFloat(getComputedStyle(ta).lineHeight) || 18;
-    var max = lineH * 4 + 16;
-    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+    var max = lineH * 4 + 16, min = parseFloat(ta.style.minHeight) || 0;
+    ta.style.height = Math.max(min, Math.min(ta.scrollHeight, max)) + "px";
     ta.style.overflowY = ta.scrollHeight > max ? "auto" : "hidden";
   }
 
@@ -954,9 +1089,13 @@
       act("telex", { station: field("station"), text: "REQUEST PREDEP CLEARANCE " + cs + " " + field("type") + " TO " + field("arr") +
         " AT " + field("dep") + " STAND " + field("stand") + " ATIS " + field("atis") }, "Clearance requested", H);
     } else if (reqKind === "oceanic") {
-      if (!field("station") || !field("entry") || !field("eta") || !field("mach") || !field("fl")) return hint("Fill in station, entry, ETA, Mach and FL", true, H);
+      if (!field("station") || !field("entry") || !field("eta") || !field("mach") || !field("fl")) return hint("Fill in station, entry, ETA, Mach and entry FL", true, H);
+      // the optional parts only when filled in (max level, destination, route, TMI)
+      var maxfl = field("maxfl").replace(/\D/g, ""), tmi = field("tmi").replace(/\D/g, "");
       act("telex", { station: field("station"), text: "OCEANIC CLEARANCE REQUEST CALLSIGN: " + cs + " ENTRY POINT: " + field("entry") +
         " AT: " + field("eta") + " REQ: M." + field("mach").replace(/\D/g, "") + " FL" + field("fl").replace(/\D/g, "") +
+        (maxfl ? " MAX FL" + maxfl : "") + (field("dest") ? " DEST: " + field("dest") : "") +
+        (field("route") ? " ROUTE: " + field("route") : "") + (tmi ? " TMI: " + tmi : "") +
         " RMKS: " + (field("rmk") || "NIL") }, "Oceanic clearance requested", H);
     } else if (reqKind === "telex") {
       if (!field("station") || !field("text")) return hint("Enter a station and a message", true, H);
@@ -980,7 +1119,39 @@
     if (state && !notesDirty && document.activeElement !== ta && ta.value !== (state.notes || "")) ta.value = state.notes || "";
     var cs = myCallsign(), h = el("cw-notes-cs");
     if (h.textContent !== cs) h.textContent = cs;
-    el("cw-notes-head").classList.toggle("hidden", !cs);
+    // in its own window the row only holds the callsign (the detach button is hidden there): no empty row without one
+    el("cw-notes-head").classList.toggle("hidden", notesDetached && !cs);
+    renderOfpBlock();
+  }
+
+  // (1.5.0) your SimBrief flight under the notes: "DEP - ARR - ALT - FL370", then the route with its SID first and STAR
+  // last (added when the route text leaves them out). Departure side in teal, arrival side in amber
+  var ofpKey = "";
+  function renderOfpBlock() {
+    var sb = state && reachable && state.selcal && state.selcal.simbrief, box = el("cn-ofp");
+    if (!box) return;
+    // "Saved" sits left of the reload button when the flight block shows (saves a line), else under the notes
+    var stl = el("cw-notes-state"), shown = !!(sb && sb.departure && sb.arrival);
+    if (shown && stl.parentNode !== el("cn-ofp-l1").parentNode) el("cn-ofp-l1").parentNode.insertBefore(stl, el("cn-ofp-rl"));
+    else if (!shown && stl.parentNode !== el("cw-notes-body")) el("cw-notes-body").appendChild(stl);
+    stl.classList.toggle("in-ofp", shown);
+    el("cw-nw-body").classList.toggle("ofp-shown", shown);   // the window keeps no room under the box for it then
+    if (!shown) { box.classList.add("hidden"); ofpKey = ""; return; }
+    var key = [sb.departure, sb.arrival, sb.alternate, sb.cruise, sb.route, sb.sid, sb.star].join("|");
+    box.classList.remove("hidden");
+    if (key === ofpKey) return;
+    ofpKey = key;
+    var l1 = ["<span class=\"dep\">" + esc(sb.departure) + "</span>", "<span class=\"arr\">" + esc(sb.arrival) + "</span>"];
+    if (sb.alternate) l1.push(esc(sb.alternate));
+    if (sb.cruise) l1.push(sb.cruise >= 18000 ? "FL" + Math.round(sb.cruise / 100) : sb.cruise + " ft");
+    el("cn-ofp-l1").innerHTML = l1.join("&nbsp; - &nbsp;");
+    var w = String(sb.route || "").split(/\s+/).filter(Boolean);
+    if (sb.sid && w[0] !== sb.sid) w.unshift(sb.sid);
+    if (sb.star && w[w.length - 1] !== sb.star) w.push(sb.star);
+    w = w.map(esc);
+    if (w.length) { w[0] = "<span class=\"dep\">" + w[0] + "</span>"; if (w.length > 1) w[w.length - 1] = "<span class=\"arr\">" + w[w.length - 1] + "</span>"; }
+    el("cn-ofp-l2").innerHTML = w.join(" ");
+    el("cn-ofp-l2").classList.toggle("hidden", !w.length);
   }
   // my callsign: the one vPilot is connected with, else the CPDLC one
   function myCallsign() {
@@ -1168,12 +1339,12 @@
     if (!sc || !sc.simbrief_user) { showTab("selcal"); scUserOpen = true; renderSelcal(); placeCard(); return; }
     if (sbBusy) return;
     sbBusy = true;
-    el("cw-vp-sb-ref").classList.add("spinning");
+    el("cw-vp-sb-ref").classList.add("spinning"); el("cn-ofp-rl").classList.add("spinning");
     renderVpSimbrief();
     act("selcal/simbrief", {}, null, null, function () {
       sbBusy = false;
-      el("cw-vp-sb-ref").classList.remove("spinning");
-      renderVpSimbrief();
+      el("cw-vp-sb-ref").classList.remove("spinning"); el("cn-ofp-rl").classList.remove("spinning");
+      renderVpSimbrief(); ofpKey = ""; renderOfpBlock();
     });
   }
 
@@ -1295,6 +1466,23 @@
     if (radarDetached) placeRadarWindow(load("CLEARWAY_RADAR_WIN", null));
   }
 
+  // (1.5.0) Settings > "Reset panel positions": the icon back to the right side, half-way down (the right edge of the
+  // panel's area is always on screen), the radar and notepad windows back to their default places. Seen as a change of
+  // state.panel_reset; the first value after the panel starts is only remembered (no reset on load)
+  var resetSeen = null;
+  function checkPanelReset() {
+    var v = state && state.panel_reset;
+    if (v === undefined) return;
+    if (resetSeen === null) { resetSeen = v; return; }
+    if (v === resetSeen) return;
+    resetSeen = v;
+    var size = el("cw-bubble").offsetWidth || 48;
+    placeBubble(window.innerWidth - size - 24 * scale, window.innerHeight * 0.45, true);
+    save("CLEARWAY_RADAR_WIN", null); if (radarDetached) placeRadarWindow(null);
+    save("CLEARWAY_NOTES_WIN", null); if (notesDetached) placeNotesWindow(null);
+    resetNotesGrow();
+    placeCard();
+  }
   function placeBubble(x, y, persist) {
     var b = el("cw-bubble"), size = b.offsetWidth || 48;
     x = Math.max(4, Math.min(window.innerWidth - size - 4, x));
@@ -1318,7 +1506,9 @@
   // starts small, the empty vPilot tab, and grows with their messages) up to CARD_MAX (the vPilot tab with a
   // 6-controller ATC list), whichever tab is shown, so switching tabs doesn't make the card jump. The Radar tab keeps
   // its own fixed size (CSS). Sizes in em: they scale with the screen like the rest of the panel.
-  var CARD_MIN = 0, CARD_MAX = 21.7;
+  // the card's height in em: at least the header, the vPilot bar, the chip row, one row of ATC cards and the message
+  // box (so an empty chat never leaves the ATC list a sliver); at most 21.7 em, then lists scroll
+  var CARD_MIN = 17, CARD_MAX = 21.7, REQ_MAX = 28, reqHoldH = 0;   // reqHoldH: the request view's height (em), kept while it's open
   function naturalHeight(p) {
     // how tall a tab would be with all its content: laid out on its own for a moment, invisibly
     var wasHidden = p.classList.contains("hidden"), keep = p.getAttribute("style") || "";
@@ -1355,11 +1545,51 @@
     // with the ATC list open, the card grows to show the whole list (and an open controller's information), up to the
     // maximum height; it never shrinks below the chat's height, so a list shorter than the chat doesn't move it
     if (atcOpen) need = Math.max(need, naturalHeight(el("cw-pane-vpilot")));
-    var h = (el("cw-head").offsetHeight + need + 2) / em;   // + the card's border
+    var headPx = el("cw-head").offsetHeight + 2;            // + the card's border
+    var h = (headPx + need) / em;
     h = Math.max(CARD_MIN, Math.min(CARD_MAX, h));
+    // (1.5.0) the CPDLC request view: the card grows if a request needs more room (up to REQ_MAX), so Send is never cut
+    // off. While the view stays open the card keeps that height, on every tab and for every request type (no small
+    // jumps when switching; user, 1.5.0 test); closing the view lets it come back down
+    if (reqOpen) {
+      if (tab === "cpdlc" && !notesOpen) reqHoldH = Math.max(reqHoldH, Math.min(REQ_MAX, (headPx + naturalHeight(el("cw-pane-cpdlc"))) / em));
+      h = Math.max(h, reqHoldH);
+    }
+    // (1.5.0) the notepad made bigger with its grip: the extra size on top of the normal one
+    var grown = notesOpen && !notesDetached && (notesGrow.w || notesGrow.h);
+    if (grown) {
+      h += notesGrow.h;
+      c.style.width = "";
+      var wv = (c.offsetWidth / em + notesGrow.w).toFixed(2) + "em";
+      c.style.width = wv;
+    } else if (c.style.width) c.style.width = "";
     var v = h.toFixed(2) + "em";
     if (c.style.height !== v) c.style.height = v;
-    if (atcOpen) revealAtcInfo();
+    if (grown) return;
+    // the request view: Send must sit inside the card, checked on the real layout (the measured height can come out a
+    // few pixels short); the card grows by what's missing, up to REQ_MAX, and keeps it while the view is open
+    if (reqOpen && tab === "cpdlc" && !notesOpen) {
+      var sb = el("cw-send").getBoundingClientRect(), cb = c.getBoundingClientRect();
+      var missR = sb.bottom - cb.bottom + 0.6 * em;
+      if (sb.height && missR > 0) {
+        reqHoldH = Math.min(REQ_MAX, h + missR / em);
+        h = Math.max(h, reqHoldH);
+        c.style.height = h.toFixed(2) + "em";
+      }
+    }
+    // the ATC list always shows at least one whole controller card: checked on the real layout (the sim can measure
+    // the list's natural height short), and the card grows by what's missing, up to its maximum
+    if (atcOpen) {
+      var cell = atc.querySelector(".cw-atc-cell");
+      if (cell) {
+        var miss = cell.getBoundingClientRect().bottom - atc.getBoundingClientRect().bottom + 0.4 * em;
+        if (miss > 0) {
+          var h2 = Math.min(CARD_MAX, h + miss / em), v2 = h2.toFixed(2) + "em";
+          if (c.style.height !== v2) c.style.height = v2;
+        }
+      }
+      revealAtcInfo();
+    }
   }
 
   function placeCard() {
@@ -1476,10 +1706,31 @@
     armPeekClose(PEEK_MS);
   }
 
-  function showPeek(m, markedUnread) {
+  // (1.5.0) urgent messages open their peek by themselves, ahead of everything, and stay until clicked:
+  // 1 = a controller's "contact me" (vPilot colour), 2 = a SELCAL alert (amber). Not while notifications are muted
+  var urgentShown = {};
+  function checkUrgent() {
+    if (!state || paused) return;
+    var best = null;
+    for (var i = 0; i < state.messages.length; i++) {
+      var m = state.messages[i];
+      if (!m.urgent || m.acked || urgentShown[m.id] || ackPending[m.id] !== undefined) continue;
+      if (Date.now() - m.ts > 10 * 60000) continue;                  // old: just the usual unread counters
+      if (!best || m.urgent < best.urgent || (m.urgent === best.urgent && m.ts > best.ts)) best = m;
+    }
+    if (!best) return;
+    if (peekMsg && peekMsg.urgent && peekMsg.urgent <= best.urgent && !el("cw-peek").classList.contains("hidden")) return;
+    if (peekReplyOpen) return;                                       // never yank a reply being typed
+    urgentShown[best.id] = 1;
+    showPeek(best, false, true);
+  }
+
+  function showPeek(m, markedUnread, urgent) {
     var isVp = !!VP[m.kind], p = el("cw-peek");
     var label = isVp ? ({ pm: "Private", radio: "Frequency", broadcast: "Broadcast", selcal: "SELCAL" }[m.kind] || "vPilot")
       : (m.tag || { cpdlc: "CPDLC", telex: "TELEX" }[m.kind] || "INFO");
+    if (m.urgent === 1) label = "Contact me";
+    closePeekReply(true);
     var text = plain(m.text || "");
     if (text.length > 320) text = text.slice(0, 317) + "...";
     var foot = markedUnread ? "<div class=\"cw-peek-foot unread\">Marked as unread</div>" : "";
@@ -1491,16 +1742,75 @@
       }
       foot += "<div class=\"cw-actions\">" + btns + "</div><div class=\"cw-peek-foot\" id=\"cw-peek-state\"></div>";
     }
-    p.className = isVp ? "vp" : "";
+    if (urgent) foot += "<div class=\"cw-peek-foot\">Stays until you click it</div>";
+    // quick reply (1.5.0): a pen on private messages and frequency text, at the end of the message's last line
+    var canReply = m.kind === "pm" || m.kind === "radio";
+    p.className = (isVp ? "vp" : "") + (m.kind === "selcal" ? " sc" : "");
     p.style.borderLeftColor = "";                          // the start-up window peek colours it while it counts down
     p.innerHTML = "<div class=\"cw-peek-head\"><span class=\"cw-peek-kind\">" + esc(label) + "</span>" +
       "<span class=\"cw-station\">" + esc(m.station) + "</span>" +
       (m.freq ? "<span class=\"cw-freq\">" + esc(m.freq) + "&nbsp;</span>" : "") +
       "<span class=\"cw-time\">" + utc(m.ts) + "</span></div>" +
-      "<div class=\"cw-peek-text" + (isVp ? "" : " mono") + "\">" + (isVp ? esc(text) : fmt(text)) + "</div>" + foot;
+      "<div class=\"cw-peek-text" + (isVp ? "" : " mono") + (canReply ? " pr-text" : "") + "\">" + (isVp ? esc(text) : fmt(text)) +
+      (canReply ? "<span class=\"pr-pen\" data-pen=\"1\" title=\"Quick reply\">" + PEN_ICON + "</span>" : "") + "</div>" +
+      "<div class=\"pr-box hidden\" id=\"cw-peek-reply\"></div>" + foot;
     peekMsg = m;
+    peekUrgent = !!urgent;
     placePeek();
-    armPeekClose(PEEK_MS);
+    if (urgent) clearTimeout(peekTimer); else armPeekClose(PEEK_MS);
+  }
+
+  // ---- quick reply from the peek: a private message is answered privately, frequency text on the frequency
+  var PEN_ICON = "<svg viewBox=\"0 0 24 24\"><path d=\"M4 20h4l10.5-10.5a2.1 2.1 0 0 0-4-4L4 16v4z\"/><path d=\"M13.5 6.5l4 4\"/></svg>";
+  var peekReplyOpen = false, peekUrgent = false;
+  function openPeekReply() {
+    var m = peekMsg, box = el("cw-peek-reply");
+    if (!m || !box) return;
+    var to = m.kind === "pm" ? "Reply to " + esc(m.station) : "Reply on " + esc(m.freq || "the frequency");
+    box.innerHTML = "<div class=\"pr-to\"><span>" + to + "</span><span class=\"k\">· Enter sends, Esc cancels</span>" +
+      "<span class=\"pr-pen on\" data-pen=\"1\" title=\"Close the quick reply\">" + PEN_ICON + "</span></div>" +
+      "<div class=\"pr-row\"><input id=\"cw-peek-in\" class=\"cw-input\" type=\"text\"/><div class=\"cw-btn primary\" data-peek-send=\"1\">Send</div></div>" +
+      "<div class=\"cw-peek-foot\" id=\"cw-peek-rstate\"></div>";
+    box.classList.remove("hidden");
+    var pen = el("cw-peek").querySelector(".pr-text > .pr-pen");
+    if (pen) pen.classList.add("hidden");
+    peekReplyOpen = true;
+    clearTimeout(peekTimer);                                         // no timeout while typing
+    var input = el("cw-peek-in");
+    wireInput(input, sendPeekReply);
+    placePeek();
+    input.focus();
+  }
+  function closePeekReply(silent) {
+    if (!peekReplyOpen) return;
+    peekReplyOpen = false;
+    var box = el("cw-peek-reply"), pen = el("cw-peek").querySelector(".pr-text > .pr-pen");
+    if (box) { box.classList.add("hidden"); box.innerHTML = ""; }
+    if (pen) pen.classList.remove("hidden");
+    if (silent) return;
+    releaseKeyboard();
+    placePeek();
+    if (!peekUrgent) armPeekClose(PEEK_MS);
+  }
+  function sendPeekReply() {
+    var m = peekMsg, input = el("cw-peek-in");
+    if (!m || !input) return;
+    var text = input.value.replace(/\s+/g, " ").trim();
+    if (!text) return;
+    var chat = m.kind === "pm" ? String(m.chat || m.station).toUpperCase() : "FREQ";
+    var st = el("cw-peek-rstate");
+    if (st) { st.className = "cw-peek-foot"; st.textContent = "Sending..."; }
+    act("vp/command", { text: text, chat: chat }, null, null, function (ok, data) {
+      var s = el("cw-peek-rstate");
+      if (!ok) { if (s) { s.className = "cw-peek-foot unread"; s.textContent = plain((data && data.error) || "Not sent"); } return; }
+      if (m && !m.acked) { m.acked = true; act("ack", { id: m.id }, null); }
+      peekReplyOpen = false;
+      releaseKeyboard();
+      if (s) { s.className = "cw-peek-foot sent"; s.textContent = "Sent"; }
+      var inp = el("cw-peek-in"); if (inp) inp.disabled = true;
+      peekUrgent = false;
+      armPeekClose(1500);
+    });
   }
 
   // closes after a while, but never while the mouse is over it (the timer restarts on leaving)
@@ -1511,6 +1821,8 @@
   }
 
   function hidePeek() {
+    if (peekReplyOpen) closePeekReply(true);
+    peekUrgent = false;
     clearTimeout(peekTimer);
     el("cw-peek").classList.add("hidden");
     peekMsg = null;
@@ -1619,6 +1931,9 @@
 
   function onPeekClick(e) {
     if (el("cw-peek").classList.contains("tsat")) { hidePeek(); if (!expanded) setExpanded(true); return; }
+    if (pick(e.target, "data-pen")) { if (peekReplyOpen) closePeekReply(); else openPeekReply(); return; }
+    if (pick(e.target, "data-peek-send")) return sendPeekReply();
+    if (up(e.target, "#cw-peek-reply")) return;                       // clicks in the reply box stay there
     var r = pick(e.target, "data-peek-reply");
     if (!r) return openPeeked();
     var m = peekMsg;
@@ -1712,7 +2027,9 @@
   function startRadar() {
     if (typeof ClearwayRadar === "undefined") return;
     ClearwayRadar.mount({ api: API, container: el("cw-radar-dock"), capture: el("cw-capture"), onDetach: toggleRadarWindow,
-                         onExpand: toggleRadarBig });
+                         onExpand: toggleRadarBig, wireInput: wireInput,
+                         // your arrival for the radar's line when your network flight plan has none: the SimBrief one
+                         myArrival: function () { var sb = state && state.selcal && state.selcal.simbrief; return (sb && sb.arrival) || ""; } });
     applyRadarBig(false);
     var w = el("cw-radar-win");
     makeWindowDraggable(el("cw-rw-head"), w);
@@ -1749,11 +2066,14 @@
     var w = el("cw-radar-win"), sw = window.innerWidth || 1, sh = window.innerHeight || 1;
     save("CLEARWAY_RADAR_WIN", { x: w.offsetLeft / sw, y: w.offsetTop / sh, w: w.offsetWidth / sw, h: w.offsetHeight / sh });
   }
-  // drag helpers for the radar window: the capture layer keeps the drag going outside the window
-  function windowDrag(handle, onMove, skip) {
+  // drag helpers for the radar and notepad windows (and the card's notepad grip): the capture layer keeps the drag
+  // going outside the window. w: the element moved / resized (the radar window by default); onEnd: saves its place
+  function windowDrag(handle, onMove, skip, w, onEnd) {
+    w = w || el("cw-radar-win");
+    onEnd = onEnd || saveRadarWindow;
     handle.addEventListener("mousedown", function (e) {
       if (e.button !== 0 || (skip && skip(e))) return;
-      var sx = e.clientX, sy = e.clientY, cap = el("cw-capture"), w = el("cw-radar-win");
+      var sx = e.clientX, sy = e.clientY, cap = el("cw-capture");
       var o = { x: w.offsetLeft, y: w.offsetTop, w: w.offsetWidth, h: w.offsetHeight };
       cap.classList.add("on");
       function move(ev) { onMove(o, ev.clientX - sx, ev.clientY - sy); }
@@ -1761,7 +2081,7 @@
         cap.classList.remove("on");
         document.removeEventListener("mousemove", move);
         document.removeEventListener("mouseup", upHandler);
-        saveRadarWindow();
+        onEnd();
       }
       document.addEventListener("mousemove", move);
       document.addEventListener("mouseup", upHandler);
@@ -1769,18 +2089,542 @@
       e.stopPropagation();
     });
   }
-  function makeWindowDraggable(handle, w) {
+  function makeWindowDraggable(handle, w, onEnd) {
     windowDrag(handle, function (o, dx, dy) {
       w.style.left = Math.max(4, Math.min(window.innerWidth - o.w - 4, o.x + dx)) + "px";
       w.style.top = Math.max(4, Math.min(window.innerHeight - o.h - 4, o.y + dy)) + "px";
-    }, function (e) { return !!up(e.target, ".cw-icon-btn"); });
+    }, function (e) { return !!up(e.target, ".cw-icon-btn"); }, w, onEnd);
   }
-  function makeWindowResizable(grip, w) {
+  function makeWindowResizable(grip, w, onEnd, minEm) {
     windowDrag(grip, function (o, dx, dy) {
-      var minW = 18 * 12.5 * scale, minH = 12 * 12.5 * scale;
+      var minW = (minEm ? minEm[0] : 18) * 12.5 * scale, minH = (minEm ? minEm[1] : 12) * 12.5 * scale;
       w.style.width = Math.max(minW, Math.min(window.innerWidth - o.x - 4, o.w + dx)) + "px";
       w.style.height = Math.max(minH, Math.min(window.innerHeight - o.y - 4, o.h + dy)) + "px";
+    }, null, w, onEnd);
+  }
+
+  // ------------------------------------------------------------ Chemtrail: the notepad's hidden game (1.5.0)
+  // A faint cloud in the notes box's bottom-right corner starts it; a faint "exit" there brings the notes back
+  // untouched (they are only hidden meanwhile). Fly a plane on a grid with the arrows or WASD; every waypoint of your
+  // SimBrief route (departure, fixes, arrival, then back) makes the chemtrail longer. Crossing it, leaving the field
+  // or hitting traffic ends the flight; inside a thunderstorm the trail shrinks by the echo's colour.
+  // In the sim the arrows reach the game through the panel's keyboard capture (keyboardOwner = CG_OWNER), so they
+  // don't move the camera. Losing focus (Esc, a click elsewhere, leaving the notepad) pauses it.
+  var CG_OWNER = "cg-canvas", CG = null;
+  var CG_CLOUD = "<svg viewBox='0 0 24 24'><path d='M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.6 5.3 5.3 0 0 0-10.2-1.2A4.4 4.4 0 0 0 7.5 18.5z'/></svg>";
+  var CG_FIXES = ["ALPHA", "BRAVO", "KILOS", "NIKEL", "ROMEO", "SIERA", "TANGO", "VICTR", "WHSKY", "XRAYS"];
+  var CG_KEYS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0], z: [0, -1], q: [-1, 0] };
+  function cgRoute() {
+    var sb = state && state.selcal && state.selcal.simbrief;
+    if (sb && sb.departure && sb.arrival) {
+      var fx = (sb.fixes || []).filter(function (f) { return f && f !== sb.departure && f !== sb.arrival; });
+      return { route: [sb.departure].concat(fx.length ? fx : CG_FIXES, [sb.arrival]), cs: myCallsign() || sb.callsign || "" };
+    }
+    return { route: ["DEPT"].concat(CG_FIXES, ["ARRV"]), cs: myCallsign() || "" };
+  }
+  function cgPlaceCloud() {
+    var cl = el("cg-cloud"), ta = el("cw-notes-text"), body = el("cw-notes-body");
+    if (!cl || CG || !ta.offsetHeight) return;
+    var a = ta.getBoundingClientRect(), b = body.getBoundingClientRect();
+    cl.style.right = Math.max(4, b.right - a.right + 5) + "px";
+    cl.style.bottom = Math.max(0, b.bottom - a.bottom + 5) + "px";
+  }
+  function cgKey(k) {                                  // a key for the game (native or captured)
+    if (!CG) return;
+    var G = CG.G, d = CG_KEYS[k] || CG_KEYS[(k || "").toLowerCase()];
+    if (d && G.state === "playing" && !(d[0] === -G.dir[0] && d[1] === -G.dir[1])) G.next = d;
+    if ((k === " " || k === "Spacebar") && G.state === "over") { CG.reset(); G.state = "playing"; G.last = 0; G.acc = 0; }
+  }
+  // the sim sends key events with an empty .key (1.5.0 test): fall back to the key code
+  var CG_CODES = { 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown", 32: " ", 87: "w", 65: "a", 83: "s", 68: "d", 90: "z", 81: "q" };
+  function cgKeyOf(e) { return e.key || CG_CODES[e.keyCode || e.which] || ""; }
+  function cgPause() { if (CG && CG.G.state === "playing") CG.G.state = "paused"; }
+  function cgHoldKeys(on) {                            // the panel's keyboard capture, for the arrows
+    if (on) {
+      keyboardOwner = CG_OWNER; clearTimeout(idleTimer); clearTimeout(keysOffTimer);
+      if (!keysWanted) wantKeys(true);
+    } else if (keyboardOwner === CG_OWNER) {
+      keyboardOwner = null;
+      clearTimeout(keysOffTimer);
+      keysOffTimer = setTimeout(function () { if (!keyboardOwner && keysWanted) wantKeys(false); }, 120);
+    }
+  }
+  function cgExit() {
+    if (!CG) return;
+    cgHoldKeys(false);
+    if (CG.off) CG.off();
+    CG.cv.parentNode.removeChild(CG.cv); CG.ex.parentNode.removeChild(CG.ex);
+    CG = null;
+    el("cw-notes-text").style.display = ""; el("cg-cloud").style.display = "";
+    notesLocked = false; updateCardGrip();
+    el("cw-notes-body").classList.remove("cg-on");
+    cgPlaceCloud();
+  }
+  function cgStart() {
+    if (CG) return;
+    var ta = el("cw-notes-text"), body = el("cw-notes-body");
+    var dpr = typeof Coherent !== "undefined" ? 1 : (window.devicePixelRatio || 1);   // the sim shows a canvas at its pixel size
+    // the game's box (#cg-canvas) holds stacked canvases used in turn: in the sim a canvas repainted in place stays on
+    // its old picture, and a new picture reaches the screen a few frames late (like the radar). So every frame draws on
+    // the next canvas underneath, and the one drawn LAG frames ago comes to the front: a new picture every frame
+    // (smooth movement), each shown once the sim has it ready. In a browser: one canvas would do, two are used
+    // LAG + 2 canvases: the one on screen (drawn LAG frames ago), the LAG still on their way, and the one drawn next
+    var IN_SIM = typeof Coherent !== "undefined", LAG = IN_SIM ? 3 : 0, NBUF = LAG + 2;
+    var cv = document.createElement("div");
+    cv.id = "cg-canvas"; cv.tabIndex = 0;
+    var bufs = [], ctxs = [], drawn = 0;                 // drawn: pictures drawn so far (picture n is on bufs[n % NBUF])
+    for (var bi0 = 0; bi0 < Math.max(2, NBUF); bi0++) { bufs.push(document.createElement("canvas")); bufs[bi0].className = "cg-buf"; cv.appendChild(bufs[bi0]); ctxs.push(bufs[bi0].getContext("2d")); }
+    NBUF = bufs.length;
+    ta.parentNode.insertBefore(cv, ta);
+    ta.style.display = "none"; el("cg-cloud").style.display = "none";
+    notesLocked = true; updateCardGrip();               // the card's size is locked while playing
+    body.classList.add("cg-on");
+    var ex = document.createElement("div"); ex.id = "cg-exit"; ex.textContent = "exit"; body.appendChild(ex);
+    var rt = cgRoute(), ROUTE = rt.route, SEQ = ROUTE.concat(ROUTE.slice(1, -1).reverse());
+    function isAirport(n) { return n === ROUTE[0] || n === ROUTE[ROUTE.length - 1]; }
+    var ctx = ctxs[0], frontB = -1;
+    var C = {}, r = { w: 0, h: 0 }, em, cell, top, cols, rows, F, ox, oy;
+    // one frame: draw the next picture underneath, bring the one drawn LAG frames ago to the front
+    function present() {
+      var nb = drawn % NBUF;
+      ctx = ctxs[nb]; draw(); drawn++;
+      var show = drawn - 1 - LAG;
+      if (show < 0) return;
+      var fb = show % NBUF;
+      if (fb === frontB) return;
+      if (frontB >= 0) bufs[frontB].className = "cg-buf";
+      bufs[fb].className = "cg-buf front"; frontB = fb;
+    }
+    // (1.5.0 user) the board is always very dark, whatever the theme, so the game reads well: fixed dark colours
+    function colours() {
+      C = { bg: "#0b0d10", text: "#e6e9f0", muted: "#a7afc2", vp: "#00d8d4", amber: "#f8c067", line: "#2a3340", rose: "#ff8a8a" };
+    }
+    function fit() {
+      var b = cv.getBoundingClientRect();
+      if (Math.abs(b.width - r.w) < 0.5 && Math.abs(b.height - r.h) < 0.5) return;
+      r = { w: b.width, h: b.height };
+      for (var bi = 0; bi < NBUF; bi++) {
+        bufs[bi].width = Math.round(r.w * dpr); bufs[bi].height = Math.round(r.h * dpr); ctxs[bi].setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      em = parseFloat(window.getComputedStyle(body).fontSize) || 12.6;
+      // (1.5.0 user: fit the card better at the top and bottom) "exit" sits in the title row, so only a thin margin
+      // is kept under the board
+      cell = Math.round(em * 1.05); top = Math.round(em * 1.6);
+      cols = Math.max(8, Math.floor((r.w - em) / cell)); rows = Math.max(6, Math.floor((r.h - top - em * 0.45) / cell));
+      F = function (k, wgt) { return (wgt || 700) + " " + (em * k).toFixed(1) + "px Selawik, 'Roboto-Regular', Roboto, 'Segoe UI', Arial, sans-serif"; };
+      ox = Math.round((r.w - cols * cell) / 2); oy = top;
+      colours();
+    }
+    // "exit" at the right end of the title row (after the scores, which leave room for it), lined up with the
+    // board's right edge. Followed every frame: the flight block under the canvas can arrive or change after the game
+    // opened (it sat in the wrong place, 1.5.0 test)
+    var exKey = "";
+    function placeExit() {
+      var b = cv.getBoundingClientRect(), bb = body.getBoundingClientRect();
+      var right = Math.round(bb.right - b.right + (r.w - ox - cols * cell)), topPx = Math.round(b.top - bb.top + top / 2), k = right + "," + topPx;
+      if (k === exKey) return;
+      exKey = k; ex.style.right = right + "px"; ex.style.top = topPx + "px"; ex.style.bottom = "auto";
+    }
+    fit();
+    var G = { state: "ready", trail: [], dir: [1, 0], next: [1, 0], wp: null, score: 0, best: +(load("CLEARWAY_CHEMTRAIL_BEST", 0) || 0), speed: 2, acc: 0, last: 0 };
+    function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+    function key(x, y) { return x + "," + y; }
+    function reset() {
+      var cx = Math.floor(cols / 3), cy = Math.floor(rows / 2);
+      G.trail = [[cx, cy], [cx - 1, cy], [cx - 2, cy]]; G.dir = [1, 0]; G.next = [1, 0]; G.score = 0; G.speed = 2; G.leg = 0; G.gotWp = null; G.acc = 0; placeWp();
+      G.time = 0; G.traffic = []; G.storms = []; G.nextTraffic = 8 + Math.random() * 8; G.nextStorm = 25 + Math.random() * 15; G.drain = 0;
+    }
+    function spawnTraffic() {
+      var h = G.trail[0], horiz = Math.random() < 0.5, t;
+      for (var tries = 0; tries < 10; tries++) {
+        if (horiz) { var y = rnd(1, rows - 2), dx = Math.random() < 0.5 ? 1 : -1; t = { x: dx > 0 ? 0 : cols - 1, y: y, dir: [dx, 0] }; }
+        else { var x = rnd(1, cols - 2), dy = Math.random() < 0.5 ? 1 : -1; t = { x: x, y: dy > 0 ? 0 : rows - 1, dir: [0, dy] }; }
+        if (Math.abs(t.x - h[0]) + Math.abs(t.y - h[1]) > 7) break;     // never right on top of you
+      }
+      // small and slow (1 square, half your speed), or big (2 squares: middle and nose) at three quarters of your speed
+      // (1.5.0 user: the big one was 5 squares, drawn 3 wide, at your speed: too big and a bit too fast)
+      t.big = Math.random() < 0.5; t.rate = t.big ? 0.75 : 0.5; t.acc = 0;
+      G.traffic.push(t);
+    }
+    function trafficCells(t) {
+      if (!t.big) return [[t.x, t.y]];
+      return [[t.x, t.y], [t.x + t.dir[0], t.y + t.dir[1]]];
+    }
+    // smooth random noise (values 0..1 on a grid every L squares, blended in between): makes the echo ragged
+    function mkNoise(L) {
+      var g = {};
+      function v(i, j) { var k = i + "," + j; return g[k] === undefined ? (g[k] = Math.random()) : g[k]; }
+      return function (x, y) {
+        x /= L; y /= L;
+        var x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+        fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+        var a = v(x0, y0) + (v(x0 + 1, y0) - v(x0, y0)) * fx, b = v(x0, y0 + 1) + (v(x0 + 1, y0 + 1) - v(x0, y0 + 1)) * fx;
+        return a + (b - a) * fy;
+      };
+    }
+    // radar echo colours, weakest to strongest. The drain bands stay: green 0, yellow/orange 1, red 2, magenta 3
+    var RAMP = [[0, "#3f8a8c"], [0.1, "#27b04b"], [0.19, "#17843a"], [0.28, "#f2df3a"], [0.4, "#f39a26"],
+                [0.52, "#e5362b"], [0.63, "#a91d1d"], [0.74, "#d93fb5"], [0.87, "#f2a8e6"]];
+    function rampIndex(v) { var i = 0; while (i + 1 < RAMP.length && v >= RAMP[i + 1][0]) i++; return i; }
+    // a thunderstorm drawn like a weather radar (1.5.0 user: round cells looked weird): a ragged echo in small pixels
+    // (a third of a square) with speckled edges, a ninth to a sixth of the field. Each square's strength for the
+    // game is the average of its pixels, so what you see is what drains you.
+    function buildStorm(cx, cy, frac) {
+      var S = 4, target = cols * rows * frac, blobs = [], b, grow, i, px = [], cells = {}, kk;
+      var n1 = mkNoise(2.4), n2 = mkNoise(1), n3 = mkNoise(0.45);
+      for (b = 0; b < 5; b++) {
+        var ang = Math.random() * Math.PI;
+        blobs.push({ x: cx + rnd(-3, 3) + Math.random(), y: cy + rnd(-2, 2) + Math.random(), r: 1 + Math.random(),
+                     sq: 0.55 + Math.random() * 0.7, ca: Math.cos(ang), sa: Math.sin(ang), k: 0.75 + Math.random() * 0.4 });
+      }
+      for (grow = 0; grow < 40; grow++) {
+        px = []; cells = {};
+        var sums = {}, n = 0;
+        for (var gx = 0; gx < cols * S; gx++) for (var gy = 0; gy < rows * S; gy++) {
+          var x = (gx + 0.5) / S, y = (gy + 0.5) / S, base = 0, near = 9;
+          for (b = 0; b < blobs.length; b++) {
+            var o = blobs[b], dx = x - o.x, dy = y - o.y, u = dx * o.ca + dy * o.sa, w = (dy * o.ca - dx * o.sa) / o.sq,
+                dd = Math.sqrt(u * u + w * w) / o.r;
+            if (dd < near) near = dd;
+            if (dd < 1) base += o.k * Math.pow(1 - dd, 1.3);   // added up, so neighbouring cells merge (no bullseyes)
+          }
+          if (near > 1.35) continue;
+          // the noise scales the echo (breaks up the rings) and adds grain, like a real radar return
+          // (added strength saturates softly: one cell peaks around red, magenta only where cells pile up)
+          var inten = base ? 0.95 * (1 - Math.exp(-1.3 * base)) * (0.7 + 0.6 * n1(x, y)) + 0.2 * (n2(x, y) - 0.5) +
+                             0.12 * (n3(x, y) - 0.5) + 0.06 * (Math.random() - 0.5) : 0;
+          if (inten < 0.04) {                              // the speckled fringe around the echo
+            if (near < 1.25 && Math.random() < (near < 1 ? 0.5 : 0.16)) inten = 0.02 + Math.random() * 0.07; else continue;
+          }
+          inten = Math.min(1, inten);
+          px.push([gx, gy, inten]);
+          kk = key(Math.floor(gx / S), Math.floor(gy / S)); sums[kk] = (sums[kk] || 0) + inten;
+        }
+        for (kk in sums) { var avg = sums[kk] / (S * S); if (avg > 0.03) { cells[kk] = avg; n++; } }
+        if (n >= target) break;
+        for (b = 0; b < blobs.length; b++) blobs[b].r += 0.25 + Math.random() * 0.2;
+      }
+      var groups = RAMP.map(function () { return []; });
+      px.forEach(function (p) { groups[rampIndex(p[2])].push(p); });
+      var list = Object.keys(cells), core = list.filter(function (k) { return cells[k] > 0.3; }), bolts = [];
+      if (!core.length) core = list;
+      for (i = 0; i < Math.max(2, Math.round(list.length / 11)); i++) bolts.push(core[rnd(0, core.length - 1)].split(",").map(Number));
+      return { cells: cells, groups: groups, S: S, bolts: bolts, born: G.time, warm: 5, life: 5 + 10 + Math.random() * 10 };   // 5 s fading in (harmless), then 10-20 s
+    }
+    function spawnStorm() {
+      var h = G.trail[0], cx, cy;
+      for (var tries = 0; tries < 20; tries++) { cx = rnd(3, cols - 4); cy = rnd(2, rows - 3); if (Math.abs(cx - h[0]) + Math.abs(cy - h[1]) > 9) break; }
+      G.storms.push(buildStorm(cx, cy, 1 / 9 + Math.random() * (1 / 6 - 1 / 9)));
+    }
+    // puffs lost per second where you are, by the echo's colour: green 0, yellow 1, red 2, magenta 3
+    function stormRate(p) {
+      var inten = 0;
+      G.storms.forEach(function (s) { if (G.time - s.born >= s.warm) inten = Math.max(inten, s.cells[key(p[0], p[1])] || 0); });
+      return inten >= 0.74 ? 3 : inten >= 0.52 ? 2 : inten >= 0.28 ? 1 : 0;
+    }
+    function hitTraffic() {
+      var h = G.trail[0];
+      return G.traffic.some(function (t) { return trafficCells(t).some(function (c) { return c[0] === h[0] && c[1] === h[1]; }); });
+    }
+    function placeWp() {
+      var p;
+      do { p = [1 + Math.floor(Math.random() * (cols - 2)), 1 + Math.floor(Math.random() * (rows - 2))]; }
+      while (G.trail.some(function (s) { return s[0] === p[0] && s[1] === p[1]; }));
+      var k = (G.leg++) % SEQ.length;
+      G.wp = { x: p[0], y: p[1], name: SEQ[k], back: k >= ROUTE.length };
+    }
+    function over(why) {
+      G.state = "over"; G.why = why;
+      if (G.score > G.best) { G.best = G.score; save("CLEARWAY_CHEMTRAIL_BEST", G.best); }
+    }
+    function step() {
+      G.dir = G.next;
+      var h = G.trail[0], n = [h[0] + G.dir[0], h[1] + G.dir[1]];
+      if (n[0] < 0 || n[1] < 0 || n[0] >= cols || n[1] >= rows) return over("Left the airspace");
+      if (G.trail.some(function (s, i) { return i < G.trail.length - 1 && s[0] === n[0] && s[1] === n[1]; })) return over("Chemtrail crossed");
+      G.trail.unshift(n);
+      G.gotWp = null;
+      if (n[0] === G.wp.x && n[1] === G.wp.y) { G.gotWp = G.wp; G.score++; G.speed = Math.min(14, G.speed + (isAirport(G.wp.name) ? 1 : 0.5)); placeWp(); }
+      else G.trail.pop();
+      G.time += 1 / G.speed;                              // traffic and storms are timed in real seconds
+      if (hitTraffic()) return over("Traffic collision");
+      G.traffic.forEach(function (t) { t.acc += t.rate; while (t.acc >= 1) { t.acc -= 1; t.x += t.dir[0]; t.y += t.dir[1]; } });
+      G.traffic = G.traffic.filter(function (t) { return t.x >= -2 && t.y >= -2 && t.x < cols + 2 && t.y < rows + 2; });
+      if (hitTraffic()) return over("Traffic collision");
+      if (G.time >= G.nextTraffic && G.traffic.length < 3) { spawnTraffic(); G.nextTraffic = G.time + 8 + Math.random() * 8; }
+      G.storms = G.storms.filter(function (s) {           // the 25-40 s wait for the next storm starts when one ends
+        if (G.time - s.born < s.life) return true;
+        G.nextStorm = G.time + 25 + Math.random() * 15; return false;
+      });
+      if (!G.storms.length && G.time >= G.nextStorm) { spawnStorm(); G.nextStorm = Infinity; }
+      var rate = stormRate(n);
+      if (rate) { G.drain += rate / G.speed; while (G.drain >= 1) { G.drain -= 1; if (G.trail.length > 2) G.trail.pop(); } }
+      else G.drain = 0;
+    }
+    function plane(x, y, dir, col, sc) {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dir[1], dir[0])); if (sc) ctx.scale(sc, sc);
+      ctx.fillStyle = col || C.vp; ctx.beginPath();
+      ctx.moveTo(7, 0); ctx.lineTo(3, -1.3); ctx.lineTo(0.5, -6.5); ctx.lineTo(-1.5, -6.5); ctx.lineTo(-0.3, -1.4); ctx.lineTo(-4.5, -1.2);
+      ctx.lineTo(-6, -3.6); ctx.lineTo(-7, -3.6); ctx.lineTo(-6.2, 0); ctx.lineTo(-7, 3.6); ctx.lineTo(-6, 3.6); ctx.lineTo(-4.5, 1.2);
+      ctx.lineTo(-0.3, 1.4); ctx.lineTo(-1.5, 6.5); ctx.lineTo(0.5, 6.5); ctx.lineTo(3, 1.3); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    function center(p) { return [ox + p[0] * cell + cell / 2, oy + p[1] * cell + cell / 2]; }
+    function draw() {
+      ctx.clearRect(0, 0, r.w, r.h);
+      // an opaque board (the theme's background without its glass transparency): the canvas being drawn underneath
+      // must not show through the one in front
+      ctx.fillStyle = String(C.bg).replace(/rgba\(\s*([^,]+),\s*([^,]+),\s*([^,]+),[^)]*\)/, "rgb($1, $2, $3)"); ctx.fillRect(0, 0, r.w, r.h);
+      ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.strokeRect(ox - 0.5, oy - 0.5, cols * cell + 1, rows * cell + 1);
+      ctx.font = F(0.85); ctx.textBaseline = "middle"; ctx.textAlign = "left";
+      ctx.fillStyle = C.text; ctx.fillText("CHEMTRAIL", ox, top / 2);
+      var tw = ctx.measureText("CHEMTRAIL  ").width;
+      ctx.font = F(0.78, 600); ctx.fillStyle = C.muted;
+      var back = G.wp && G.wp.back, a0 = ROUTE[0], a1 = ROUTE[ROUTE.length - 1];
+      ctx.fillText((rt.cs ? rt.cs + "  " : "") + (back ? a1 + "-" + a0 : a0 + "-" + a1), ox + tw, top / 2);
+      ctx.font = F(0.85); ctx.textAlign = "right";
+      ctx.fillText("Waypoints " + G.score + "   Best " + G.best, ox + cols * cell - (ex.offsetWidth || em * 1.6) - em * 0.8, top / 2); ctx.textAlign = "left";
+      (G.storms || []).forEach(function (s) {
+        var age = G.time - s.born, fade = Math.max(0, Math.min(1, age / s.warm) * Math.min(1, (s.life - age) / 1.5));
+        // pixels on whole screen pixels, edge to edge (no seams or overlaps), one path per colour
+        var sub = cell / s.S;
+        ctx.save(); ctx.beginPath(); ctx.rect(ox, oy, cols * cell, rows * cell); ctx.clip();   // never past the board's edge
+        ctx.globalAlpha = 0.9 * fade;
+        s.groups.forEach(function (grp, gi) {
+          if (!grp.length) return;
+          ctx.fillStyle = RAMP[gi][1]; ctx.beginPath();
+          grp.forEach(function (p) {
+            var x0 = Math.round(ox + p[0] * sub), y0 = Math.round(oy + p[1] * sub);
+            ctx.rect(x0, y0, Math.round(ox + (p[0] + 1) * sub) - x0, Math.round(oy + (p[1] + 1) * sub) - y0);
+          });
+          ctx.fill();
+        });
+        ctx.globalAlpha = (age < s.warm ? 0.45 : 1) * fade; ctx.fillStyle = "#ffffff";
+        s.bolts.forEach(function (b) {
+          var x = ox + b[0] * cell + cell / 2, y = oy + b[1] * cell + cell / 2, k = cell / 15;
+          ctx.beginPath(); ctx.moveTo(x + 1.5 * k, y - 6 * k); ctx.lineTo(x - 3.5 * k, y + 1 * k); ctx.lineTo(x - 0.2 * k, y + 1 * k);
+          ctx.lineTo(x - 1.5 * k, y + 6 * k); ctx.lineTo(x + 3.5 * k, y - 1 * k); ctx.lineTo(x + 0.2 * k, y - 1 * k); ctx.closePath(); ctx.fill();
+        });
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      });
+      // smooth movement (1.5.0 user: a 60 fps feel). Everything is drawn a QUARTER of a move behind the game: a plane is
+      // on the middle of its square a quarter of the way through each step (1.5.0 user: a whole move ahead turned a
+      // square early, a whole move behind lagged too much, half a move still a little). A key pressed while the plane
+      // comes into a square turns it there. Paused keeps its place; a finished flight shows the plane on its last square.
+      var LAGF = 0.25;
+      var al0 = G.state === "over" ? LAGF : Math.max(0, Math.min(1, (G.acc || 0) / (1000 / G.speed)));
+      [G.state === "playing" && al0 < LAGF ? G.gotWp : null, G.wp].forEach(function (wp) {   // the one just reached stays until the plane is there
+        if (!wp) return;                                    // a fix: a triangle; an airport: a ring with a runway
+        var q = center([wp.x, wp.y]);
+        ctx.strokeStyle = C.amber; ctx.lineWidth = 1.6; ctx.beginPath();
+        if (isAirport(wp.name)) { ctx.arc(q[0], q[1], 5, 0, Math.PI * 2); ctx.moveTo(q[0] - 3.5, q[1] + 3.5); ctx.lineTo(q[0] + 3.5, q[1] - 3.5); }
+        else { ctx.moveTo(q[0], q[1] - 5); ctx.lineTo(q[0] + 5, q[1] + 4); ctx.lineTo(q[0] - 5, q[1] + 4); ctx.closePath(); }
+        ctx.stroke();
+        ctx.font = F(0.72, 600); ctx.fillStyle = C.amber;
+        var tx = q[0] + 8, nameW = ctx.measureText(wp.name).width;
+        if (tx + nameW > ox + cols * cell) tx = q[0] - 8 - nameW;
+        ctx.fillText(wp.name, tx, q[1] - 6);
+      });
+      for (var i = G.trail.length - 1; i >= 1; i--) {      // the chemtrail: white puffs fading towards the tail (none under the plane)
+        var c = center(G.trail[i]), al = 0.85 - 0.6 * (i / Math.max(1, G.trail.length - 1));
+        ctx.globalAlpha = Math.max(0.18, al); ctx.fillStyle = C.text;
+        ctx.beginPath(); ctx.arc(c[0], c[1], cell * 0.36, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      (G.traffic || []).forEach(function (t) {
+        var f = t.acc + t.rate * (al0 - LAGF), p = center([t.x, t.y]);
+        // the big one: about 1.35 squares long (1.5.0 user: 2 squares was still too big), centred towards its nose square
+        if (t.big) f += 0.3;
+        plane(p[0] + t.dir[0] * f * cell, p[1] + t.dir[1] * f * cell, t.dir, C.rose, t.big ? 1.35 * cell / 14 : 0);
+      });
+      // your plane (1.5.0 user: turns pivot on the TAIL). P, its middle, glides along the path; the tail is a little
+      // behind it ON the path, so at a corner the tail stays on the old line while the nose swings round
+      // first half of a step: coming into its square along the last move; second half: leaving it towards the next
+      // move (a turn pressed then eases it onto the new line)
+      var a = center(G.trail[1]), b = center(G.trail[0]), P;
+      if (al0 < LAGF) P = [a[0] + (b[0] - a[0]) * (al0 + 1 - LAGF), a[1] + (b[1] - a[1]) * (al0 + 1 - LAGF)];
+      else P = [b[0] + G.next[0] * (al0 - LAGF) * cell, b[1] + G.next[1] * (al0 - LAGF) * cell];
+      if (!G.pv || G.state !== "playing") G.pv = P;
+      else {
+        var ex2 = P[0] - G.pv[0], ey2 = P[1] - G.pv[1];
+        if (ex2 * ex2 + ey2 * ey2 > cell * cell * 0.09) { G.pv = [G.pv[0] + ex2 * 0.4, G.pv[1] + ey2 * 0.4]; } else G.pv = P;
+      }
+      P = G.pv;
+      var pts = [P].concat(G.trail.slice(al0 < LAGF ? 1 : 0, 4).map(center)), need = cell * 0.35, tx2 = P[0], ty2 = P[1];
+      for (var j = 1; j < pts.length && need > 0; j++) {
+        var sx = pts[j][0] - tx2, sy = pts[j][1] - ty2, sl = Math.sqrt(sx * sx + sy * sy);
+        if (sl < 0.001) continue;
+        if (sl >= need) { tx2 += sx / sl * need; ty2 += sy / sl * need; need = 0; }
+        else { tx2 = pts[j][0]; ty2 = pts[j][1]; need -= sl; }
+      }
+      var hdv = al0 < LAGF ? G.dir : G.next, want = Math.atan2(hdv[1], hdv[0]);
+      if (G.ang === undefined || G.state !== "playing") G.ang = want;
+      else {
+        var da = want - G.ang;
+        da = Math.atan2(Math.sin(da), Math.cos(da));         // the short way round
+        G.ang = Math.abs(da) < 0.02 ? want : G.ang + da * 0.35;
+      }
+      var hd = [Math.cos(G.ang), Math.sin(G.ang)];
+      G.vis = [tx2, ty2];
+      plane(tx2 + hd[0] * 6.5, ty2 + hd[1] * 6.5, hd);      // the drawing's tail is 6.5 px behind its middle
+      var msg = null, sub = null;
+      if (G.state === "ready") { msg = "Chemtrail"; sub = "Arrows or WASD to fly your route. Click to take off"; }
+      if (G.state === "paused") { msg = "Paused"; sub = "Click to resume"; }
+      if (G.state === "over") { msg = G.why; sub = G.score + " waypoints. Click or Space to fly again"; }
+      if (msg) {
+        ctx.fillStyle = C.bg; ctx.globalAlpha = 0.72; ctx.fillRect(ox, oy, cols * cell, rows * cell); ctx.globalAlpha = 1;
+        ctx.textAlign = "center"; ctx.fillStyle = C.text; ctx.font = F(1.35);
+        ctx.fillText(msg, r.w / 2, oy + rows * cell / 2 - 10);
+        ctx.fillStyle = C.muted; ctx.font = F(0.85, 600); ctx.fillText(sub, r.w / 2, oy + rows * cell / 2 + 12);
+        ctx.textAlign = "left";
+      }
+    }
+    var me = CG = { G: G, cv: cv, ex: ex, reset: reset };
+    var colourTick = 0;
+    // one tick: moves the game on by the real time gone since the last one. Driven by the frame callback and, as a
+    // backup, a timer (the sim may call frames rarely while the mouse is still)
+    var lastTick = 0;
+    function tick() {
+      if (CG !== me) return;
+      lastTick = Date.now();
+      // the clock: the sim's frame timestamp only moved while the mouse was dragging (1.5.0 test), so use our own
+      var t = (window.performance && performance.now) ? performance.now() : Date.now();
+      placeExit();
+      // hidden (another tab, card closed): paused. Measured on screen: the sim may report a canvas's offsetWidth as 0
+      var vis = cv.getBoundingClientRect();
+      if (!(vis.width > 0 && vis.height > 0)) { cgPause(); cgHoldKeys(false); return; }
+      fit();
+      if (++colourTick % 60 === 0) colours();               // follows a theme change (7700 included)
+      if (G.state === "playing") {
+        G.acc += Math.min(200, t - (G.last || t)); var ms = 1000 / G.speed;
+        while (G.acc >= ms && G.state === "playing") { G.acc -= ms; step(); }
+        // a text field took the keyboard: pause. (Not on any loss of it: in the sim the keyboard was let go right after
+        // the take-off click, which paused at once. Esc and a click outside the panel pause it directly.)
+        if (keyboardOwner && keyboardOwner !== CG_OWNER) G.state = "paused";
+        else if (!keyboardOwner && keysWanted === false) cgHoldKeys(true);   // ask for the keyboard again (the arrows)
+      }
+      G.last = t;
+      present();                                           // a new picture every frame (see the canvases above)
+    }
+    function loop() { if (CG !== me) return; tick(); window.requestAnimationFrame(loop); }
+    var backup = setInterval(function () {
+      if (CG !== me) { clearInterval(backup); return; }
+      if (Date.now() - lastTick > 60) tick();
+    }, 40);
+    cv.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" || e.keyCode === 27) { cgPause(); cgHoldKeys(false); e.stopPropagation(); return; }
+      cgKey(cgKeyOf(e)); e.preventDefault(); e.stopPropagation();
     });
+    // the click that takes off / resumes. Listened for on the notes box around the canvas too: in the sim the canvas
+    // itself didn't get the click (1.5.0 test). "exit" and the window's own buttons are left alone
+    function takeOff(e) {
+      if (CG !== me || (e.button !== undefined && e.button !== 0)) return;
+      var t = e.target;
+      if (t === ex || (t && t.closest && t.closest(".cw-icon-btn, #cw-notes-state, #cn-ofp"))) return;
+      try { cv.focus(); } catch (err) { /* ignore */ }
+      cgHoldKeys(true);
+      if (G.state !== "playing") { if (G.state === "over") reset(); G.state = "playing"; G.last = 0; G.acc = 0; }
+      e.stopPropagation();
+    }
+    cv.addEventListener("mousedown", takeOff);
+    body.addEventListener("mousedown", takeOff);
+    me.off = function () { body.removeEventListener("mousedown", takeOff); };
+    // in a browser, losing focus pauses. Not in the sim: it never lets a canvas keep focus (1.5.0 test: the take-off
+    // click was undone at once). There, Esc, a click outside the panel or a text field taking the keyboard pause it
+    if (typeof Coherent === "undefined")
+      cv.addEventListener("blur", function () { setTimeout(function () { if (document.activeElement !== cv) { cgPause(); cgHoldKeys(false); } }, 0); });
+    ex.addEventListener("click", cgExit);
+    reset();
+    window.requestAnimationFrame(loop);
+  }
+  function startChemtrail() {
+    var cl = document.createElement("div");
+    cl.id = "cg-cloud"; cl.title = ""; cl.innerHTML = CG_CLOUD;
+    el("cw-notes-body").appendChild(cl);
+    cl.addEventListener("click", cgStart);
+    // keys that reach the page itself (the sim may not focus a canvas): for the game while it holds the keyboard
+    document.addEventListener("keydown", function (e) {
+      if (!CG || (keyboardOwner && keyboardOwner !== CG_OWNER) || e.target === CG.cv) return;   // a text field has the keys
+      if (e.key === "Escape" || e.keyCode === 27) { cgPause(); cgHoldKeys(false); return; }
+      var k = cgKeyOf(e);
+      cgKey(k); e.preventDefault();
+    });
+    setInterval(function () { if (notesOpen || notesDetached) cgPlaceCloud(); }, 300);   // follows the notes box when it changes size
+  }
+
+  // ------------------------------------------------------------ notepad window / bigger notepad (1.5.0)
+  // The notepad's detach button moves its content into a window like the radar's: moved by its title bar, resized
+  // from the corner, open with the card closed, its place remembered. In the card, the notepad has a corner grip
+  // that makes the card bigger (never smaller than normal); leaving the notepad brings the card back to normal.
+  var notesDetached = false, notesGrow = { w: 0, h: 0 }, notesLocked = false;   // locked: while the game runs
+  function setNotesDetached(on) {
+    notesDetached = on;
+    save("CLEARWAY_NOTES_DETACHED", on);
+    (on ? el("cw-nw-body") : el("cw-notes")).insertBefore(el("cw-notes-body"), on ? null : el("cw-notes-away"));
+    el("cw-notes-win").classList.toggle("hidden", !on);
+    el("cw-notes-away").classList.toggle("hidden", !on);
+    el("cw-notes-detach").classList.toggle("hidden", on);
+    if (on) placeNotesWindow(load("CLEARWAY_NOTES_WIN", null));
+    renderNotes();
+    showTab(tab);
+  }
+  function placeNotesWindow(g) {
+    var w = el("cw-notes-win"), sw = window.innerWidth, sh = window.innerHeight;
+    g = g || { x: 0.3, y: 0.25, w: 0.22, h: 0.3 };
+    var ww = Math.max(14 * 12.5 * scale, Math.min(sw - 8, g.w * sw)), wh = Math.max(9 * 12.5 * scale, Math.min(sh - 8, g.h * sh));
+    var x = Math.max(4, Math.min(sw - ww - 4, g.x * sw)), y = Math.max(4, Math.min(sh - wh - 4, g.y * sh));
+    w.style.left = x + "px"; w.style.top = y + "px"; w.style.width = ww + "px"; w.style.height = wh + "px";
+  }
+  function saveNotesWindow() {
+    var w = el("cw-notes-win"), sw = window.innerWidth || 1, sh = window.innerHeight || 1;
+    save("CLEARWAY_NOTES_WIN", { x: w.offsetLeft / sw, y: w.offsetTop / sh, w: w.offsetWidth / sw, h: w.offsetHeight / sh });
+  }
+  // the card's grip: only with the notepad open in the card, not while playing. It sits in the card's corner away from
+  // the icon (the card grows away from it), so dragging it outwards always makes the card bigger
+  function updateCardGrip() {
+    var g = el("cw-card-grip"), on = notesOpen && !notesDetached && !notesLocked;
+    g.classList.toggle("hidden", !on);
+    if (!on) return;
+    var d = cardDirection();
+    g.className = (d.right ? "r" : "l") + (d.down ? " b" : " t");
+  }
+  function resetNotesGrow() {
+    if (!notesGrow.w && !notesGrow.h) return;
+    notesGrow = { w: 0, h: 0 };
+    el("cw-card").style.width = "";
+  }
+  function startNotesWindow() {
+    var w = el("cw-notes-win");
+    makeWindowDraggable(el("cw-nw-head"), w, saveNotesWindow);
+    makeWindowResizable(el("cw-nw-grip"), w, saveNotesWindow, [14, 9]);
+    el("cw-nw-dock").addEventListener("click", function () { setNotesDetached(false); });
+    el("cw-notes-back").addEventListener("click", function () { setNotesDetached(false); });
+    el("cw-notes-detach").addEventListener("click", function () { setNotesDetached(true); });
+    swallowWheel(w);
+    // the card's grip: the extra size in em, added to the card's normal size by sizeCard
+    var grip = el("cw-card-grip"), c = el("cw-card");
+    grip.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      var sx = e.clientX, sy = e.clientY, cap = el("cw-capture"), d = cardDirection();
+      var em = parseFloat(window.getComputedStyle(c).fontSize) || 14, g0 = { w: notesGrow.w, h: notesGrow.h };
+      var baseW = c.offsetWidth / em - g0.w, baseH = c.offsetHeight / em - g0.h;
+      cap.classList.add("on");
+      function move(ev) {
+        var dx = (ev.clientX - sx) * (d.right ? 1 : -1), dy = (ev.clientY - sy) * (d.down ? 1 : -1);
+        var maxW = (window.innerWidth - 8) / em - baseW, maxH = (window.innerHeight - 8) / em - baseH;
+        notesGrow = { w: Math.max(0, Math.min(maxW, g0.w + dx / em)), h: Math.max(0, Math.min(maxH, g0.h + dy / em)) };
+        placeCard();
+      }
+      function upHandler() {
+        cap.classList.remove("on");
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", upHandler);
+      }
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", upHandler);
+      e.preventDefault(); e.stopPropagation();
+    });
+    setNotesDetached(!!load("CLEARWAY_NOTES_DETACHED", false));
   }
 
   // ------------------------------------------------------------ clock: UTC / sim time / local
@@ -1919,7 +2763,7 @@
   function fmtHm(ms) { var d = new Date(ms); return pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()); }
 
   function setExpanded(v) {
-    if (!v) releaseKeyboard();
+    if (!v) { cgPause(); releaseKeyboard(); }
     expanded = v;
     el("cw-card").classList.toggle("hidden", !expanded);
     save("CLEARWAY_EXPANDED", expanded);
@@ -1970,6 +2814,8 @@
   var idleTimer = null;
   function releaseKeyboard() {
     var a = document.activeElement;
+    // Esc in the peek's quick reply closes the reply box (without sending)
+    if (a && a.id === "cw-peek-in" && peekReplyOpen) { peekReplyOpen = false; setTimeout(function () { peekReplyOpen = true; closePeekReply(); }, 0); }
     if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA") && up(a, "#cw-root")) a.blur();
     keyboardOwner = null;
     clearTimeout(idleTimer);
@@ -2139,7 +2985,8 @@
   }
 
   function applyKey(ev) {
-    if (ev.t === "key" && ev.k === "Escape") { releaseKeyboard(); return; }
+    if (ev.t === "key" && ev.k === "Escape") { cgPause(); releaseKeyboard(); return; }
+    if (keyboardOwner === CG_OWNER) { cgKey(ev.t === "text" ? ev.s : ev.k); return; }   // Chemtrail has the keyboard
     if (ev.t === "key" && ev.k === "Tab") { var cur = keyboardOwner ? el(keyboardOwner) : null; if (cur) focusNext(cur, ev.shift); return; }
     var input = keyboardOwner ? el(keyboardOwner) : null;
     if (!input || document.activeElement !== input) return;
@@ -2265,6 +3112,7 @@
     el("cw-peek").addEventListener("mouseout", function (e) {
       if (e.relatedTarget && el("cw-peek").contains(e.relatedTarget)) return;   // moving between its children
       peekHover = false;
+      if (peekUrgent || peekReplyOpen) return;                       // these stay until clicked / sent
       armPeekClose(3000);
     });
     makeDraggable(el("cw-head"), null);
@@ -2286,14 +3134,15 @@
     });
     updateClock();
     setInterval(updateClock, 1000);
+    setInterval(fadeSysLines, 1000);
     setInterval(watchLayout, 150);
     // the panel losing focus (a click in the cockpit, another window) gives the keyboard back;
     // moving the mouse alone does not
     window.addEventListener("blur", releaseKeyboard);
     if (FOCUS_DEBUG) startFocusDebug();
-    document.addEventListener("visibilitychange", function () { if (document.hidden) releaseKeyboard(); });
+    document.addEventListener("visibilitychange", function () { if (document.hidden) { cgPause(); releaseKeyboard(); } });
     var uiFrame = document.querySelector("ingame-ui");
-    if (uiFrame) uiFrame.addEventListener("panelInactive", releaseKeyboard);
+    if (uiFrame) uiFrame.addEventListener("panelInactive", function () { cgPause(); releaseKeyboard(); });
     // A click in the cockpit (or anywhere outside the panel) never reaches this page, but the engine
     // sends "mousePressOutsideView" for it (found with the focus debug build). The click itself still
     // goes to the sim. Guard: ignore it right after a mouse press on the panel itself.
@@ -2303,7 +3152,7 @@
       try {
         Coherent.on("mousePressOutsideView", function () {
           setTimeout(function () {
-            if (Date.now() - lastPanelPress > 250) releaseKeyboard();
+            if (Date.now() - lastPanelPress > 250) { cgPause(); releaseKeyboard(); }   // (Chemtrail pauses too)
           }, 30);
         });
       } catch (e) { /* older sim: keep the idle / Esc behaviour */ }
@@ -2340,16 +3189,36 @@
     }
     el("cw-vp-run").addEventListener("click", function () {
       var vp = (state && state.vpilot) || {};
+      if (vpClosingUntil) return hint("vPilot is closing...", false, "cw-vp-hint");
       if (vp.running) return askCloseVpilot(el("cw-vp-close-ask").classList.contains("hidden"));
       if (vp.starting) return hint("vPilot is starting...", false, "cw-vp-hint");
       act("vp/launch", {}, "Starting vPilot in the background...", "cw-vp-hint");
     });
     el("cw-vp-close-yes").addEventListener("click", function () {
       askCloseVpilot(false);
+      vpClosingUntil = Date.now() + 20000;              // yellow until vPilot's process is gone (20 s at most)
+      renderVpilot();
       act("vp/close", {}, "Closing vPilot...", "cw-vp-hint");
     });
     el("cw-vp-close-no").addEventListener("click", function () { askCloseVpilot(false); });
     el("cw-vp-sb-ref").addEventListener("click", vpSimbriefRefresh);
+    el("cn-ofp-rl").addEventListener("click", vpSimbriefRefresh);      // the notepad's flight block: same SimBrief fetch
+    // dice: a random SELCAL nobody on VATSIM is using (the SELCAL tab's generator), put in the field as if typed
+    el("cw-vp-sc-rnd").addEventListener("click", function () {
+      var b = el("cw-vp-sc-rnd");
+      if (b.classList.contains("spinning")) return;
+      b.classList.add("spinning");
+      var cs = el("cw-vp-cs-in").value.trim() || myCallsign();
+      act("selcal/generate", { callsign: cs }, null, null, function (ok, data) {
+        b.classList.remove("spinning");
+        var code = ok && data && data.current && data.current.std;
+        if (!code) return hint((data && data.error) || "Couldn't make a SELCAL.", true, "cw-vp-hint");
+        var i = el("cw-vp-selcal-in");
+        i.value = fmtSelcal(code);
+        i.removeAttribute("data-auto");                 // yours now: the flight plan's SELCAL won't replace it
+        vpSelcalCheck(0);                               // shows "avail." next to it
+      });
+    });
     el("cw-vp-sb").addEventListener("click", function () {   // click the SimBrief callsign to use it
       var ofp = state && state.selcal && state.selcal.simbrief;
       if (!ofp || !ofp.callsign) return;
@@ -2416,16 +3285,10 @@
     });
     el("cw-hop-go").addEventListener("click", saveHoppie);
     wireInput(el("cw-hop-in"), saveHoppie);
-    el("cw-req-toggle").addEventListener("click", function () {
-      reqOpen = !reqOpen;
-      el("cw-req").classList.toggle("hidden", !reqOpen);
-      el("cw-req-chev").classList.toggle("closed", !reqOpen);
-      save("CLEARWAY_REQ_OPEN", reqOpen);
-      placeCard();
-    });
-    ["cw-req-kind", "cw-req-kind2"].forEach(function (id) {
-      el(id).addEventListener("click", function (e) { var v = attr(e.target, "data-v"); if (v) setReqKind(v); });
-    });
+    // (1.5.0) the Request button in the bar opens the request view (x or the button again goes back to the messages)
+    el("rq-open").addEventListener("click", function () { setReqOpen(!reqOpen); });
+    el("rq-x").addEventListener("click", function () { setReqOpen(false); });
+    el("cw-req-kind").addEventListener("click", function (e) { var v = attr(e.target, "data-v"); if (v) setReqKind(v); });
     el("cw-fields").addEventListener("input", function (e) {
       var k = attr(e.target, "data-k");
       if (k) (formVals[reqKind] || (formVals[reqKind] = {}))[k] = e.target.value;
@@ -2475,13 +3338,13 @@
 
     wireSelcal();
 
-    reqOpen = load("CLEARWAY_REQ_OPEN", false);
-    el("cw-req").classList.toggle("hidden", !reqOpen);
-    el("cw-req-chev").classList.toggle("closed", !reqOpen);
+    setReqOpen(!!load("CLEARWAY_REQ_OPEN", false));
     setReqKind("logon");
     // ?open=vpilot|cpdlc opens the card on that tab (used to take documentation screenshots in a browser)
     var openParam = /[?&]open=(vpilot|cpdlc|selcal|radar)/.exec(window.location.search || "");
     startRadar();
+    startNotesWindow();
+    startChemtrail();
     showTab(openParam ? openParam[1] : load("CLEARWAY_TAB", "vpilot"));
     setExpanded(openParam ? true : load("CLEARWAY_EXPANDED", false));
     // ?atc=CALLSIGN opens Nearby ATC with that controller expanded (documentation screenshots)

@@ -95,6 +95,16 @@ Click the Clearway icon in the toolbar. A small round icon appears:
 
 The panel is a transparent full-screen layer, and only the icon and card catch the mouse. It's designed for 16:9 screens (1080p, 1440p, 4K) and works in MSFS 2020 and 2024.
 
+> **Ultrawide screens:** MSFS gives a toolbar panel a fixed area on the right of the screen and doesn't fit it to the screen, so there's one download per screen shape (the resolution doesn't matter, only the shape):
+>
+> | Screen | Examples | Download |
+> |---|---|---|
+> | 16:9 | 1920×1080, 2560×1440, 3840×2160 | `Clearway-for-VATSIM-<version>.zip` |
+> | 21:9 | 2560×1080, 3440×1440, 5120×2160 | `Clearway-for-VATSIM-21-9-wide-<version>.zip` |
+> | 32:9 | 3840×1080, 5120×1440, 7680×2160 | `Clearway-for-VATSIM-32-9-wide-<version>.zip` |
+>
+> With the standard download on an ultrawide screen everything works, but the left part of the screen is out of reach. A wider version on a narrower screen puts part of the panel off the screen. If the icon or a window ever ends up out of view (after changing resolution, or switching between windowed and fullscreen), press **Settings › Options › Reset panel positions** in Clearway.
+
 While you type in a panel text field, Clearway keeps the keys away from MSFS key bindings and from programs such as ChasePlane, so typing never moves the camera or flips a switch. Controllers (yoke, throttle, joystick) keep working. Press **Esc** or click anywhere outside the panel to hand the keyboard back. This can be switched off in Clearway's settings.
 
 ## Using it

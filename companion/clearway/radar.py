@@ -344,6 +344,14 @@ class State:
                            p.get("groundspeed", 0), p.get("heading", 0), fp.get("aircraft_short") or "",
                            " ".join(freqs.get(p["callsign"], [])), fp.get("departure") or "", fp.get("arrival") or "",
                            p.get("transponder") or ""])
+        # Test switch (1.5.0): real 7700s are rare, so CLEARWAY_TEST_7700=1 makes one airborne pilot squawk 7700 in
+        # Clearway's own copy of the data (the same one every refresh), or =CALLSIGN picks that pilot. Nothing is sent anywhere.
+        test = os.environ.get("CLEARWAY_TEST_7700", "").strip().upper()
+        if test:
+            pick = [p for p in pilots if p[0].upper() == test] if test != "1" else \
+                   sorted((p for p in pilots if p[3] > 10000 and p[9]), key=lambda p: p[0])[:1]
+            for p in pick:
+                p[10] = "7700"
         # positions of every departure / destination airport in use (for faint airport dots and route lines)
         aps = {}
         for p in pilots:
@@ -528,6 +536,88 @@ def get_tile(z, x, y):
                 tile_locks.pop(path, None)
 
 
+# ---------------------------------------------------------------- coloured map (1.5.0)
+# With "Coloured map" on, each grey tile is recoloured with the theme's sea and land colours: the Esri canvas is
+# greyscale (sea ~35, land ~65 out of 255), so every grey level maps to a ramp: darker than sea -> darker sea, sea ->
+# land in between, lighter than land (borders, coasts, place names) -> a light tint of the land colour. Cached per
+# palette next to the raw tiles, which stay as they are (a new palette needs no new download).
+MAP_DEFAULTS = {   # same as the panel's / settings page's THEME_DEFAULTS
+    "dark": ("#172131", "#39424f"), "black": ("#161616", "#363636"),
+    "light": ("#2f4052", "#56616d"), "custom": ("#1b1430", "#3b3352"),
+}
+SEA_L, LAND_L = 35, 65
+
+
+def _rgb(h):
+    return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def palette_for(cfg):
+    """(id, sea, land) for the current theme, or None when the map stays grey."""
+    if not cfg.get("map_colored"):
+        return None
+    theme = cfg.get("theme") or "dark"
+    if theme not in MAP_DEFAULTS:
+        theme = "dark"
+    edits = (cfg.get("theme_colors") or {}).get(theme) or {}
+    sea, land = edits.get("sea") or MAP_DEFAULTS[theme][0], edits.get("land") or MAP_DEFAULTS[theme][1]
+    try:
+        _rgb(sea), _rgb(land)
+    except ValueError:
+        return None
+    return (sea[1:] + land[1:]).lower(), sea, land
+
+
+def _ramp(sea, land):
+    s, l, w = _rgb(sea), _rgb(land), (255, 255, 255)
+    lut = [[], [], []]
+    for v in range(256):
+        for c in range(3):
+            if v <= SEA_L:
+                out = s[c] * (0.55 + 0.45 * v / SEA_L)
+            elif v <= LAND_L:
+                t = (v - SEA_L) / (LAND_L - SEA_L)
+                out = s[c] + (l[c] - s[c]) * t
+            else:                                       # lighter: towards a light tint of the land colour
+                t = min(1.0, (v - LAND_L) / (200 - LAND_L))
+                out = l[c] + (w[c] - l[c]) * t * 0.62
+            lut[c].append(max(0, min(255, int(round(out)))))
+    return lut
+
+
+def recolour(data, sea, land):
+    from io import BytesIO
+    from PIL import Image                               # bundled in Clearway.exe (tools/build_exe.py)
+    im = Image.open(BytesIO(data)).convert("L")
+    lut = _ramp(sea, land)
+    out = Image.merge("RGB", [im.point(lut[c]) for c in range(3)])
+    buf = BytesIO()
+    out.save(buf, "PNG", optimize=False)
+    return buf.getvalue()
+
+
+def get_coloured_tile(z, x, y, pal):
+    pid, sea, land = pal
+    path = os.path.join(CACHE, "tiles_c", pid, str(z), str(x), "%d.png" % y)
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read()
+    raw = get_tile(z, x, y)
+    try:
+        data = recolour(raw, sea, land)
+    except Exception as exc:                            # unexpected format, no Pillow...: the grey tile, never a hole
+        log("map recolour failed:", exc)
+        return raw
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "wb") as f:
+            f.write(data)
+        os.replace(path + ".tmp", path)
+    except OSError:
+        pass
+    return data
+
+
 # ---------------------------------------------------------------- Clearway glue
 class Radar:
     """Owned by the HTTP server. Loads everything on first use, in the background."""
@@ -573,8 +663,70 @@ class Radar:
             pass
         return {}
 
+    # (1.5.0) range rings around airports: up to 5, 1-1500 nm, any airport VATSpy knows (ICAO or IATA). Kept in
+    # Clearway's settings so the panel, the detached radar window and the phone all show the same rings
+    MAX_RINGS, MAX_RING_NM = 5, 1500
+
+    def _rings(self) -> list:
+        out = []
+        for r in self.session.cfg.get("radar_rings") or []:
+            if isinstance(r, dict) and r.get("icao") and isinstance(r.get("lat"), (int, float)):
+                out.append({"icao": str(r["icao"]), "nm": int(r.get("nm") or 0), "lat": r["lat"], "lon": r["lon"]})
+        return out[:self.MAX_RINGS]
+
+    def _airport(self, code: str):
+        """(icao, lat, lon) for an ICAO or IATA code, None if unknown (radar data must be loaded)."""
+        st = self.state
+        code = (code or "").strip().upper()
+        if not st or not code:
+            return None
+        code = st.st.alias.get(code, code)              # IATA / LID that VATSpy lists (LAX) -> its ICAO (KLAX)
+        c = st.st.airport_coord(code)
+        if not c:
+            return None
+        ap = st.st.airports.get(code)
+        return code, round(c[0], 5), round(c[1], 5), (ap[2] if ap else "")
+
+    def _set_rings(self, spec: str) -> dict:
+        """spec: 'KLAX:25,KLAS:120' (empty = no rings). Unknown airports are reported, not stored."""
+        rings, bad, seen = [], [], set()
+        if (spec or "").strip() == "-":                 # "-": no rings
+            spec = ""
+        for part in [p for p in (spec or "").split(",") if p.strip()]:
+            code, _, nm = part.partition(":")
+            try:
+                nm = int(float(nm))
+            except ValueError:
+                bad.append(part); continue
+            if not (1 <= nm <= self.MAX_RING_NM):
+                bad.append(part); continue
+            a = self._airport(code)
+            if not a:
+                bad.append(code.strip().upper()); continue
+            if (a[0], nm) in seen:                      # the same airport and radius twice: once
+                continue
+            seen.add((a[0], nm))
+            rings.append({"icao": a[0], "nm": nm, "lat": a[1], "lon": a[2]})
+        rings = rings[:self.MAX_RINGS]
+        self.session.cfg.update({"radar_rings": rings})
+        return {"rings": rings, "bad": bad}
+
     def handle(self, action: str, query: dict):
         """Returns (status, body bytes, content type, cache-control)."""
+        q = lambda k: (query.get(k) or [""])[0]  # noqa: E731
+        if action == "rings":                   # GET: the rings; ?set=KLAX:25,KLAS:120 replaces them
+            self._ensure_started()
+            if "set" in query:
+                if not self.state:
+                    return 200, b'{"error":"radar data still loading"}', "application/json", "no-store"
+                body = self._set_rings(q("set"))
+            else:
+                body = {"rings": self._rings()}
+            return 200, json.dumps(body, separators=(",", ":")).encode(), "application/json", "no-store"
+        if action == "airport":                 # ?icao=KLAX: its position (rings, your arrival line)
+            a = self._airport(q("icao"))
+            body = {"icao": a[0], "lat": a[1], "lon": a[2], "name": a[3]} if a else {"error": "unknown airport"}
+            return 200, json.dumps(body, separators=(",", ":")).encode(), "application/json", "no-store"
         if action in ("traffic", "atc", "ping") or action.startswith("tiles/"):
             if self.state:
                 self.state.last_request = time.time()
@@ -592,7 +744,11 @@ class Radar:
                 return 404, b"{}", "application/json", "no-store"
             if not (0 <= z <= 19 and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
                 return 404, b"{}", "application/json", "no-store"
-            data = get_tile(z, x, y)
+            pal = palette_for(self.session.cfg)
+            if pal and q("p") == pal[0]:                # (1.5.0) the coloured map, for the palette the radar asked for
+                data = get_coloured_tile(z, x, y, pal)
+            else:
+                data = get_tile(z, x, y)
             return 200, data, ("image/jpeg" if data[:2] == b"\xff\xd8" else "image/png"), "max-age=604800"
         if action in ("traffic", "atc"):
             self._ensure_started()
@@ -608,7 +764,8 @@ class Radar:
             with st.lock:
                 body = st.traffic
             me = json.dumps(self._me(), separators=(",", ":")).encode()
-            if body.endswith(b"}") and len(body) > 2:      # add "me" without re-encoding the whole feed
-                body = body[:-1] + b',"me":' + me + b"}"
+            pal = palette_for(self.session.cfg)
+            if body.endswith(b"}") and len(body) > 2:      # add "me" (and the map palette) without re-encoding the feed
+                body = body[:-1] + b',"me":' + me + b',"pal":"' + (pal[0] if pal else "").encode() + b'"}'
             return 200, body, "application/json", "no-store"
         return 404, b'{"error":"not found"}', "application/json", "no-store"

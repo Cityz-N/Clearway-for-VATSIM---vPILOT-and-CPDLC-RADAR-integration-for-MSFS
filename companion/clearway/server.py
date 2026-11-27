@@ -311,6 +311,9 @@ class Handler(BaseHTTPRequestHandler):
                     data.pop("hoppie_logon", None)   # empty field = keep the saved code
                 s.cfg.update(data)
                 s._bump()
+            elif action == "panel_reset":           # (1.5.0) Settings: put the panel's icon and windows back in view
+                s.panel_reset = int(time.time() * 1000)
+                s._bump()
             elif action == "pair":
                 if not self._is_local():
                     return self._json({"error": "only available on this PC"}, 403)

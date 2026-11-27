@@ -82,6 +82,7 @@ class Session(VpilotMixin, SelcalMixin, TsatMixin):
         self.position: dict | None = None      # {lat, lon, alt, ts, source}
         self._vatsim_pos_ts = 0.0
         self.panel_seen = 0.0
+        self.panel_reset = 0      # (1.5.0) time (ms) of the last "Reset panel positions" from Settings, 0 = never
         self.panel_paused = False              # MSFS panel notifications paused (pause button)
         self.fast_until = 0.0
         self.port = 0                           # web server port, set at start (base_url follows the current IP)
@@ -765,6 +766,7 @@ class Session(VpilotMixin, SelcalMixin, TsatMixin):
                 "unacked_cpdlc": unacked_cpdlc,
                 "quiet_vpilot": quiet_vp,
                 "notes": self.notes,
+                "panel_reset": self.panel_reset,   # (1.5.0) changes when Settings asks the panel to reset its positions
                 "messages": msgs,
                 "trash": [{k: m.get(k) for k in ("id", "ts", "dir", "kind", "station", "text")}
                           for m in reversed(self.trash) if m["dir"] != "sys"],

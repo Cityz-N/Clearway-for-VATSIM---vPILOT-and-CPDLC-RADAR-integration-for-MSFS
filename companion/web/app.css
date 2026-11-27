@@ -528,3 +528,28 @@ input.dim { opacity: .4; }
 .vp-sb-ref { border: 0; background: transparent; color: var(--muted); padding: 3px; margin-left: 4px; border-radius: 6px; cursor: pointer; display: inline-flex; }
 .vp-sb-ref:hover { background: var(--surface-2); }
 .vp-sb-ref.spinning svg { animation: spin .8s linear infinite; }.vp-who .fp-warn.ok { background: var(--mint-soft); color: var(--mint); }
+
+/* (1.5.0) theme editor: the MSFS panel's colours for the chosen theme */
+.te { margin: 2px 0 8px; border: 1px solid var(--line); border-radius: 12px; }
+.te summary { padding: 11px 14px; font-size: 14px; }
+.te-body { padding: 0 14px 14px; }
+.te-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-bottom: 10px; }
+.te-c { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 13.5px; color: var(--text); cursor: pointer; }
+.te-c input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: none; cursor: pointer; flex: 0 0 auto; }
+.te-c input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+.te-c input[type=color]::-webkit-color-swatch { border: 0; border-radius: 5px; }
+.te-alpha { display: flex; align-items: center; gap: 10px; font-size: 13.5px; margin-bottom: 10px; }
+.te-alpha input { flex: 1; accent-color: var(--accent); }
+.te-alpha b { width: 3em; text-align: right; font: 600 12.5px var(--mono); color: var(--muted); }
+.te-prev { position: relative; height: 96px; border-radius: 10px; margin-bottom: 8px; overflow: hidden;
+  background: linear-gradient(100deg, #dfe8f2 0%, #b9cde0 38%, #2d3c4c 62%, #0d141c 100%); }
+.te-card { position: absolute; left: 12px; top: 10px; right: 60px; bottom: 10px; border-radius: 9px; padding: 7px 9px; box-sizing: border-box; font-size: 12px; }
+.te-head { display: flex; align-items: center; margin-bottom: 5px; }
+.te-head i { margin-left: auto; width: 34px; height: 6px; border-radius: 3px; }
+.te-box { border-radius: 6px; padding: 5px 7px; margin-bottom: 4px; }
+.te-mut { font-size: 11px; }
+.te-ico { position: absolute; right: 12px; top: 50%; margin-top: -19px; width: 38px; height: 38px; border-radius: 50%; box-sizing: border-box; border: 2px solid; display: flex; align-items: center; justify-content: center; }
+.te-ico svg { width: 19px; height: 19px; }
+.te-warn { font-size: 12.5px; color: var(--rose); margin-bottom: 6px; }
+.te-map.off { opacity: .45; pointer-events: none; }
+.te-reset { margin-top: 4px; }

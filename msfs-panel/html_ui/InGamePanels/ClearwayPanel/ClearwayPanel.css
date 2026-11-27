@@ -337,7 +337,7 @@ ingame-ui#ClearwayPanel .ingameUiWrapper { width: 100%; height: 100%; padding: 0
 .cw-vp-run { padding-left: 0.45em; padding-right: 0.45em; background-color: var(--rose-soft); color: var(--rose); }
 .cw-vp-run svg { width: 0.95em; height: 0.95em; vertical-align: -0.12em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .cw-vp-run.open { background-color: var(--mint-soft); color: var(--mint); }
-.cw-vp-run.starting { background-color: var(--surface-2); color: var(--muted); }
+.cw-vp-run.starting { background-color: var(--amber-soft); color: var(--amber); }   /* yellow: starting or closing (1.5.0) */
 .cw-vp-run.hidden { display: none; }
 .cw-vp-connect { padding: 0.6em 0.8em 0.2em; background-color: var(--surface); border-bottom: 1px solid var(--line); }
 .cw-field.third { width: 32%; }
@@ -671,7 +671,15 @@ textarea.cw-input { resize: none; overflow-y: hidden; line-height: 1.35em; min-h
 .cw-vp-sb-ref { width: 1.15em; height: 1.15em; margin-left: 0.3em; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 0.3em; }
 .cw-vp-sb-ref:hover { background-color: var(--surface-2); }
 .cw-vp-sb-ref svg { width: 0.85em; height: 0.85em; stroke: var(--muted); stroke-width: 2.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.cw-vp-sb-ref.spinning svg { animation: cw-spin 0.8s linear infinite; }#cw-sc-sbuser-in { text-transform: none; }   /* SimBrief usernames keep their case */
+.cw-vp-sb-ref.spinning svg { animation: cw-spin 0.8s linear infinite; }
+/* random SELCAL (dice) at the right end of the row, under the SELCAL field */
+.cw-vp-sc-rnd { width: 1.2em; height: 1.2em; margin-left: 0.35em; flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 0.3em; }
+.cw-vp-sc-st.hidden + .cw-vp-sc-rnd { margin-left: auto; }
+.cw-vp-sc-rnd:hover { background-color: var(--surface-2); }
+.cw-vp-sc-rnd svg { width: 0.9em; height: 0.9em; stroke: var(--muted); stroke-width: 2.2; fill: none; }
+.cw-vp-sc-rnd svg .p { fill: var(--muted); stroke: none; }
+.cw-vp-sc-rnd:hover svg { stroke: var(--text); } .cw-vp-sc-rnd:hover svg .p { fill: var(--text); }
+.cw-vp-sc-rnd.spinning svg { animation: cw-spin 0.6s linear infinite; }#cw-sc-sbuser-in { text-transform: none; }   /* SimBrief usernames keep their case */
 .cw-sc-sbname {
   font-family: "Selawik", "Consolas", monospace; font-size: 0.75em; color: var(--muted); cursor: pointer;
   padding: 0.15em 0.4em; border-radius: 0.4em; border: 1px dashed var(--line); margin-right: 0.15em;
@@ -713,6 +721,57 @@ textarea.cw-input { resize: none; overflow-y: hidden; line-height: 1.35em; min-h
               transparent 70%, rgba(143, 211, 255, 0.55) 70%, rgba(143, 211, 255, 0.55) 80%, transparent 80%);
 }
 .cw-tabs { min-width: 0; overflow: hidden; }   /* very long counters clip the tabs, never the buttons */
+
+/* (1.5.0) the notepad in its own window: same frame as the radar window */
+#cw-notes-win {
+  position: absolute; left: 300px; top: 200px; width: 380px; height: 300px;
+  min-width: 14em; min-height: 9em;
+  background-color: var(--bg); border: 1px solid var(--line); border-radius: 0.9em;
+  pointer-events: auto; overflow: hidden;
+}
+#cw-nw-body { position: absolute; left: 0; top: 2.3em; right: 0; bottom: 0; overflow: hidden; padding: 0.6em 0.7em; box-sizing: border-box;
+  display: flex; flex-direction: column; }
+#cw-nw-grip {
+  position: absolute; right: 0; bottom: 0; width: 1.4em; height: 1.4em; cursor: nwse-resize; z-index: 3;
+  background: linear-gradient(135deg, transparent 50%, rgba(143, 211, 255, 0.55) 50%, rgba(143, 211, 255, 0.55) 60%, transparent 60%,
+              transparent 70%, rgba(143, 211, 255, 0.55) 70%, rgba(143, 211, 255, 0.55) 80%, transparent 80%);
+}
+#cw-notes-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; position: relative; }
+/* Chemtrail (the notepad's hidden game): a faint cloud in the notes box's corner, the canvas in the box's place */
+#cg-cloud { position: absolute; right: 0.4em; bottom: 0.4em; width: 1.25em; height: 1.25em; cursor: pointer; opacity: 0.38; z-index: 3; }
+#cg-cloud:hover { opacity: 0.9; }
+#cg-cloud svg { width: 100%; height: 100%; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linejoin: round; }
+#cg-canvas { display: block; flex: 1 1 auto; min-height: 0; width: 100%; border-radius: 0.6em; outline: none; position: relative; z-index: 1; overflow: hidden; }
+/* its two stacked canvases (ClearwayPanel.js cgStart): the front one on top, the next picture drawn underneath */
+#cg-canvas .cg-buf { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 0; border-radius: 0.6em; }
+#cg-canvas .cg-buf.front { z-index: 1; }
+#cw-notes-body.cg-on #cw-notes-head { display: none; }   /* (1.5.0) more room for the game in the card */
+#cg-exit { position: absolute; right: 0.6em; z-index: 3; transform: translateY(-50%); line-height: 1.2; font-size: 0.78em; color: var(--muted); opacity: 0.45; cursor: pointer; letter-spacing: 0.04em; }
+#cg-exit:hover { opacity: 0.95; }
+#cw-notes-away { padding: 0.1em 0; }
+/* in its own window: no empty header row (only the callsign, when there is one), "Saved" in the bottom-right corner */
+#cw-nw-body #cw-notes-head { margin: -0.15em 0 0.3em; min-height: 0; }
+#cw-nw-body #cw-notes-state { position: absolute; left: 0.75em; bottom: 0.25em; line-height: 1.2; }
+#cw-nw-body { padding-bottom: 1.3em; }
+#cw-notes-state { text-align: left; }
+/* in the flight block's first line, just left of the reload button */
+#cw-notes-state.in-ofp, #cw-nw-body #cw-notes-state.in-ofp { position: static; margin-left: auto; margin-right: 0.4em; font-weight: 400; letter-spacing: 0; }
+#cw-notes-state.in-ofp + .rl { margin-left: 0; }
+#cw-nw-body.ofp-shown { padding-bottom: 0.6em; }
+#cw-notes-head { align-items: center; min-height: 1.5em; }
+#cw-notes-cs { flex-grow: 1; text-align: right; }
+#cw-notes-head .cw-icon-btn { width: 1.6em; height: 1.5em; margin-left: 0.4em; flex-shrink: 0; }
+/* the card's grip for a bigger notepad: in the corner away from the icon */
+#cw-card-grip { position: absolute; width: 1.3em; height: 1.3em; z-index: 5; }
+#cw-card-grip.r.b { right: 0; bottom: 0; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--muted) 50%, var(--muted) 60%, transparent 60%, transparent 70%, var(--muted) 70%, var(--muted) 80%, transparent 80%); }
+#cw-card-grip.l.b { left: 0; bottom: 0; cursor: nesw-resize;
+  background: linear-gradient(225deg, transparent 50%, var(--muted) 50%, var(--muted) 60%, transparent 60%, transparent 70%, var(--muted) 70%, var(--muted) 80%, transparent 80%); }
+#cw-card-grip.r.t { right: 0; top: 0; cursor: nesw-resize;
+  background: linear-gradient(45deg, transparent 50%, var(--muted) 50%, var(--muted) 60%, transparent 60%, transparent 70%, var(--muted) 70%, var(--muted) 80%, transparent 80%); }
+#cw-card-grip.l.t { left: 0; top: 0; cursor: nwse-resize;
+  background: linear-gradient(315deg, transparent 50%, var(--muted) 50%, var(--muted) 60%, transparent 60%, transparent 70%, var(--muted) 70%, var(--muted) 80%, transparent 80%); }
+#cw-card-grip.hidden { display: none; }
 
 /* ---------------- 1.0.0 tweaks ---------------- */
 /* muted mark on the floating icon: an amber disc with a slash (instead of pause bars) */
@@ -841,7 +900,7 @@ canvas.cw-tring { pointer-events: none; }
 #cw-radar-dock { flex: 1 1 auto; height: auto; min-height: 0; }
 #cw-card.radar #cw-radar-dock { flex: none; height: 24.6em; }
 #cw-notes { display: flex; flex-direction: column; }
-#cw-notes .cw-notes { flex: 1 1 auto; height: auto; min-height: 0; }
+#cw-notes .cw-notes, #cw-notes-body .cw-notes { flex: 1 1 auto; height: auto; min-height: 0; box-sizing: border-box; }   /* (1.5.0: border-box, it ran under the card's right edge; #cw-notes-body: also in its own window) */
 /* scrollbars drawn by the panel (MSFS shows none): a thin track on the right of each scrolling area, thumb to drag */
 /* a third of the first size (0.2em thumb), inside the lists' right padding so it never sits on the cards, above
    everything. The bar itself is a wider, invisible grab area around the thin thumb */
@@ -866,10 +925,10 @@ canvas.cw-tring { pointer-events: none; }
 #cw-root.light #cw-peek { background-color: rgba(255, 255, 255, 0.75); }
 /* one clean edge: no shadow (it read as a double border with the old navy line), just a faint white rim at 20%
    like //42 Flow's glass. Light theme: a faint dark rim instead, white would vanish on it */
-#cw-card, #cw-radar-win { border-color: rgba(255, 255, 255, 0.2); box-shadow: none; }
+#cw-card, #cw-radar-win, #cw-notes-win { border-color: rgba(255, 255, 255, 0.2); box-shadow: none; }
 #cw-peek { border-top-color: rgba(255, 255, 255, 0.2); border-right-color: rgba(255, 255, 255, 0.2);
   border-bottom-color: rgba(255, 255, 255, 0.2); box-shadow: none; }
-#cw-root.light #cw-card, #cw-root.light #cw-radar-win { border-color: rgba(30, 40, 70, 0.14); }
+#cw-root.light #cw-card, #cw-root.light #cw-radar-win, #cw-root.light #cw-notes-win { border-color: rgba(30, 40, 70, 0.14); }
 #cw-root.light #cw-peek { border-top-color: rgba(30, 40, 70, 0.14); border-right-color: rgba(30, 40, 70, 0.14);
   border-bottom-color: rgba(30, 40, 70, 0.14); }
 /* start-up window open: the full mint-green icon wins over the navy-blue "online" colours above */
@@ -950,7 +1009,53 @@ canvas.cw-tring { pointer-events: none; }
 /* No drop shadows on the floating parts: in the sim the soft 50% black shadow showed as a wide hazy band around the
    card and the icon (Dark and Black; Light's shadow is fainter). The thin rim is the edge. The start-up window's
    green glow is kept on purpose */
-#cw-card, #cw-bubble, #cw-bubble:hover, #cw-bubble.idle:hover, #cw-bubble.q-faint:hover, #cw-peek, #cw-radar-win, #cw-com-pop { box-shadow: none !important; }
+/* ---------------- 1.5.0 ---------------- */
+/* notepad: your SimBrief flight under the notes, faint; departure side teal, arrival side amber; reload at the right */
+.cn-ofp { flex-shrink: 0; margin-top: 0.45em; padding: 0.4em 0.15em 0; border-top: 1px solid var(--line);
+  color: var(--muted); opacity: 0.8; font-size: 0.74em; line-height: 1.4; user-select: none; }
+.cn-ofp .l1 { display: flex; align-items: center; font-weight: 700; letter-spacing: 0.04em; }
+.cn-ofp .l2 { font-family: "Selawik", "Consolas", monospace; word-spacing: 0.15em; }
+.cn-ofp .dep { color: var(--vp); font-weight: 700; } .cn-ofp .arr { color: var(--amber); font-weight: 700; }
+.cn-ofp .rl { margin-left: auto; width: 1.45em; height: 1.45em; display: flex; align-items: center; justify-content: center;
+  border-radius: 0.35em; cursor: pointer; }
+.cn-ofp .rl:hover { background-color: var(--surface-2); }
+.cn-ofp .rl svg { width: 1.05em; height: 1.05em; stroke: var(--muted); stroke-width: 2.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.cn-ofp .rl.spinning svg { animation: cw-spin 0.8s linear infinite; }
+/* squawking 7700: the panel turns red over whichever theme is set (dark red glass, red rims and accents, red icon) */
+#cw-root.emergency #cw-card, #cw-root.emergency #cw-peek, #cw-root.emergency #cw-com-pop, #cw-root.emergency #cw-radar-win, #cw-root.emergency #cw-notes-win {
+  --bg: rgba(46, 6, 10, 0.86); --surface: rgba(255, 80, 80, 0.10); --surface-2: rgba(255, 80, 80, 0.20);
+  --line: rgba(255, 90, 90, 0.32); --text: #ffe9e9; --muted: #f0b3b3; --accent: #ff8a8a; --vp: #ffb0b0; --vp-soft: rgba(255, 90, 90, 0.18);
+  --unread: rgba(255, 90, 90, 0.16); border-color: rgba(255, 90, 90, 0.7); }
+#cw-root.emergency #cw-peek { background-color: rgba(46, 6, 10, 0.92); }
+#cw-root.emergency { --icon-blue: #ff4d4d; }
+#cw-root.emergency #cw-bubble, #cw-root.emergency #cw-bubble.idle { background-color: #3a0608; border-color: #ff4d4d; opacity: 1; }
+#cw-root.emergency #cw-bubble .cw-glyph { fill: #ff4d4d; }
+#cw-root.emergency .cw-btn.primary { background-color: #ff4d4d; color: #2a0306; border-color: #ff4d4d; }
+.cw-7700 { margin-left: 0.55em; padding: 0.1em 0.45em; border-radius: 0.4em; background: #ff4d4d; color: #fff; font-size: 0.75em; font-weight: 700; letter-spacing: 0.05em; }
+.cw-7700.hidden { display: none; }
+/* peek: SELCAL alerts in amber ("contact me" keeps the vPilot colour) */
+#cw-peek.sc { border-left-color: var(--amber); }
+#cw-peek.sc .cw-peek-kind { background-color: var(--amber-soft); color: var(--amber); }
+/* peek quick reply: the pen at the end of the message's last line; open, it moves above Send */
+.pr-text { position: relative; padding-right: 1.7em; }
+.pr-text > .pr-pen { position: absolute; right: -0.25em; bottom: -0.1em; }
+.pr-pen { width: 1.5em; height: 1.5em; display: flex; align-items: center; justify-content: center; border-radius: 0.4em; cursor: pointer; opacity: 0.7; }
+.pr-pen:hover { opacity: 1; background-color: var(--surface-2); }
+.pr-pen.hidden { display: none; }
+.pr-pen svg { width: 1.05em; height: 1.05em; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pr-pen.on svg { stroke: var(--vp); }
+.pr-box { margin-top: 0.5em; }
+.pr-to { display: flex; align-items: center; font-size: 0.78em; color: var(--muted); margin-bottom: 0.25em; }
+.pr-to .k { opacity: 0.75; margin-left: 0.5em; }
+.pr-to .pr-pen { margin-left: auto; font-size: 1.28em; }
+.pr-row { display: flex; align-items: center; }
+.pr-row .cw-input { flex: 1; min-width: 0; padding: 0.4em 0.6em; font-size: 0.92em; border-color: var(--vp); }
+.pr-row .cw-btn.primary { margin: 0 0 0 0.45em; padding: 0.45em 0.85em; }
+/* grey status lines fade out after 30 s (ClearwayPanel.js fadeSysLines), then leave the list */
+.cw-sys { transition: opacity 1s; }
+.cw-sys.fading { opacity: 0; }
+.cw-sys.gone { display: none; }
+#cw-card, #cw-bubble, #cw-bubble:hover, #cw-bubble.idle:hover, #cw-bubble.q-faint:hover, #cw-peek, #cw-radar-win, #cw-notes-win, #cw-com-pop { box-shadow: none !important; }
 #cw-bubble.alert-tsat { box-shadow: 0 0 1.1em rgba(134, 239, 172, 0.55) !important; }
 /* Light theme: toned down (it was close to white): a soft grey-blue base, less white in the inner boxes */
 #cw-root.light {
@@ -966,15 +1071,15 @@ canvas.cw-tring { pointer-events: none; }
 /* Readability (1.4.0 contrast pass): the card is see-through glass, so its text has to hold up over both a bright
    scene (clouds, snow) and a dark one. Measured on every tab: each theme's text colours are stronger inside the card.
    Dark and Black: brighter greys and accents (they dropped to ~2.3-3:1 over bright clouds). */
-#cw-card, #cw-peek, #cw-com-pop { --muted: #a7afc2; --accent: #96aaff; --rose: #ff9898; --amber: #f8c067; --mint: #63dfae; --lav: #b9afff; }
-#cw-root.black #cw-card, #cw-root.black #cw-peek, #cw-root.black #cw-com-pop { --muted: #b2b2b2; }
+#cw-card, #cw-peek, #cw-com-pop, #cw-notes-win { --muted: #a7afc2; --accent: #96aaff; --rose: #ff9898; --amber: #f8c067; --mint: #63dfae; --lav: #b9afff; }
+#cw-root.black #cw-card, #cw-root.black #cw-peek, #cw-root.black #cw-com-pop, #cw-root.black #cw-notes-win { --muted: #b2b2b2; }
 /* Light: deeper colours (made for a white page, they fell to 1.6-2.5:1 once a dark scene shows through the pale glass),
    and a little more body to the glass */
 #cw-root.light { --text: #151a26; --muted: #545c70; --vp: #00706d; --vp-soft: rgba(0, 112, 109, 0.12); --accent: #3553d4;
   --accent-soft: #dde3fb; --mint: #17704d; --amber: #8a5600; --rose: #ad3434; --lav: #4f3fc4; --var-text: #2b47c4; }
-#cw-root.light #cw-card, #cw-root.light #cw-peek, #cw-root.light #cw-com-pop { --muted: #545c70; --accent: #3553d4; --rose: #ad3434;
+#cw-root.light #cw-card, #cw-root.light #cw-peek, #cw-root.light #cw-com-pop, #cw-root.light #cw-notes-win { --muted: #545c70; --accent: #3553d4; --rose: #ad3434;
   --amber: #8a5600; --mint: #17704d; --lav: #4f3fc4; }
-#cw-root.light #cw-card { --bg: rgba(228, 232, 240, 0.9); }
+#cw-root.light #cw-card, #cw-root.light #cw-notes-win { --bg: rgba(228, 232, 240, 0.9); }
 #cw-root.light .cw-atc-cell.open { border-color: rgba(0, 112, 109, 0.45); }
 #cw-root.light .cw-atc-n { color: #ffffff; }                       /* the count on the (now deeper) teal */
 #cw-root.light .cw-tab[data-tab="radar"].on { color: #155f99; }
@@ -982,3 +1087,51 @@ canvas.cw-tring { pointer-events: none; }
 #cw-com-pop { background-color: #0b1826; border-color: rgba(255, 255, 255, 0.16); }
 #cw-root.black #cw-com-pop { background-color: #0e0e0e; }
 #cw-root.light #cw-com-pop { background-color: #f4f5f8; border-color: rgba(30, 40, 70, 0.16); }
+
+/* ---------------- 1.5.0: CPDLC request redesign ---------------- */
+/* the bar's Request button: a small pill like the Hoppie one */
+.rq-open { display: flex; align-items: center; margin-right: 0.45em; padding: 0.22em 0.6em 0.22em 0.45em; border-radius: 0.6em; cursor: pointer;
+  font-size: 0.82em; font-weight: 700; color: var(--accent); background-color: var(--accent-soft); flex-shrink: 0; }
+.rq-open svg { width: 1.05em; height: 1.05em; margin-right: 0.3em; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.rq-open:hover { filter: brightness(1.12); }
+.rq-open.on { background-color: var(--accent); color: var(--on-accent); }
+/* the "not connected" notice: one short line (full text on hover) */
+#cw-pane-cpdlc .cw-notice { padding: 0.32em 0.65em; margin: 0.4em 0.8em 0; font-size: 0.8em; border-radius: 0.55em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the request view: in place of the message list, Send at the bottom */
+#cw-pane-cpdlc.rq-on #cw-list { display: none; }
+#cw-req { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0.5em 0.8em 0.6em; }
+#cw-req.hidden { display: none; }
+.rq-head { display: flex; align-items: center; margin-bottom: 0.45em; }
+.rq-head b { font-size: 0.92em; }
+.rq-x { margin-left: auto; width: 1.5em; height: 1.5em; display: flex; align-items: center; justify-content: center; border-radius: 0.4em; cursor: pointer; color: var(--muted); }
+.rq-x:hover { background-color: var(--surface-2); color: var(--text); }
+.rq-x svg { width: 0.85em; height: 0.85em; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; fill: none; }
+.rq-kinds { display: flex; flex-wrap: wrap; justify-content: space-between; margin-bottom: 0.25em; }
+.rq-k { width: 24.2%; box-sizing: border-box; margin-bottom: 0.25em; padding: 0.34em 0; text-align: center; border-radius: 0.45em; cursor: pointer;
+  font-size: 0.8em; font-weight: 700; color: var(--muted); background-color: var(--surface-2); }
+.rq-k:hover { color: var(--text); }
+.rq-k.on { background-color: var(--accent); color: var(--on-accent); }
+.rq-sub { display: flex; margin-bottom: 0.4em; }
+.rq-sub.hidden { display: none; }
+.rq-sub .rq-k { width: auto; flex: 1; margin-right: 0.25em; background-color: transparent; border: 1px solid var(--line); }
+.rq-sub .rq-k:last-child { margin-right: 0; }
+.rq-sub .rq-k.on { background-color: var(--surface-2); color: var(--text); border-color: var(--accent); }
+.rq-fields { display: flex; flex-wrap: wrap; justify-content: space-between; }
+.rq-f { position: relative; width: 100%; margin-bottom: 0.32em; }
+.rq-f.half { width: 49%; }
+/* the label inside the box, on the left (no extra line per field) */
+.rq-f label { position: absolute; left: 0.65em; top: 50%; margin-top: -0.6em; line-height: 1.2em; font-size: 0.66em; font-weight: 700;
+  letter-spacing: 0.05em; color: var(--muted); pointer-events: none; }
+.rq-f .cw-field { width: 100%; box-sizing: border-box; margin: 0; padding: 0.38em 0.55em; font-size: 0.9em; }
+.rq-f .cw-field.lb { padding-left: 5.4em; }
+#cw-fields > .cw-field { width: 100%; box-sizing: border-box; margin-bottom: 0.32em; padding: 0.38em 0.55em; font-size: 0.9em; }   /* free text */
+.rq-spacer { flex: 1 1 auto; }
+.rq-foot { display: flex; align-items: center; padding-top: 0.45em; border-top: 1px solid var(--line); margin-top: 0.2em; }
+.rq-foot .cw-hint { flex: 1; padding-right: 0.5em; }
+.rq-foot .cw-btn.primary { padding: 0.42em 1.05em; }
+/* (1.5.0) three-column request fields (Oceanic); the WX row is exactly one field tall (set by ClearwayPanel.js) */
+.rq-f.third { width: 32.5%; }
+.rq-f.two { width: 66.3%; }
+.rq-sub { margin-bottom: 0.32em; }
+.rq-sub .rq-k { display: flex; align-items: center; justify-content: center; padding: 0; margin-bottom: 0; }

@@ -236,17 +236,101 @@
 
   // dark (navy, default), black or light
   function applyTheme(theme) {
-    const t = theme === "light" || theme === "black" ? theme : "dark";
+    // (this page: Custom looks like Dark; the panel takes Custom's own colours)
+    const sel = theme === "light" || theme === "black" || theme === "custom" ? theme : "dark";
+    const t = sel === "custom" ? "dark" : sel;
     if (t === "dark") delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = t;
     $("themeColor").content = { dark: "#050e17", black: "#000000", light: "#f5f6fa" }[t];
-    document.querySelectorAll("#setTheme button").forEach((b) => b.classList.toggle("on", b.dataset.theme === t));
+    document.querySelectorAll("#setTheme button").forEach((b) => b.classList.toggle("on", b.dataset.theme === sel));
     try { localStorage.setItem("clearway.theme", t); } catch (e) {}
+  }
+
+  // ---- (1.5.0) theme editor: the MSFS panel's colours. Same defaults as ClearwayPanel.js THEME_DEFAULTS
+  const THEME_DEFAULTS = {
+    dark: { bg: "#050e17", box: "#0b1826", accent: "#96aaff", text: "#e6e9f0", icon_bg: "#0b1826", icon_fg: "#5b9bd5", alpha: 0.75, sea: "#172131", land: "#39424f" },
+    black: { bg: "#000000", box: "#0e0e0e", accent: "#96aaff", text: "#e6e9f0", icon_bg: "#0e0e0e", icon_fg: "#cfcfcf", alpha: 0.75, sea: "#161616", land: "#363636" },
+    light: { bg: "#e4e8f0", box: "#eff1f5", accent: "#3553d4", text: "#151a26", icon_bg: "#eff1f5", icon_fg: "#3d7bbf", alpha: 0.9, sea: "#2f4052", land: "#56616d" },
+    custom: { bg: "#1a1033", box: "#2a1d4d", accent: "#b69cff", text: "#efeaff", icon_bg: "#2a1d4d", icon_fg: "#b69cff", alpha: 0.6, sea: "#1b1430", land: "#3b3352" },
+  };
+  const THEME_NAMES = { dark: "Dark", black: "Black", light: "Light", custom: "Custom" };
+  let teLocal = {}, teTimer = null, teTheme = "dark";      // edits not saved yet (so the pickers don't jump back)
+  const rgbOf = (h) => [1, 3, 5].map((i) => parseInt(h.substr(i, 2), 16) || 0);
+  const rgba = (h, a) => `rgba(${rgbOf(h).join(", ")}, ${a})`;
+  function lumOf(c) { const v = c.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; }
+  const ratio = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const over = (fg, a, bg) => fg.map((v, i) => v * a + bg[i] * (1 - a));   // a colour at alpha a over bg
+  // (1.5.0) an edited theme (and Custom) colours this page too (settings on the PC, the phone): the page's own
+  // variables from the same 6 colours. Remembered for the next start's first paint (index.html)
+  const PAGE_VARS = ["--bg", "--surface", "--surface-2", "--line", "--text", "--muted", "--accent", "--accent-soft", "--var-text",
+    "--bar", "--bar-line", "--tabbar", "--placeholder", "--focus", "--track", "--dot", "--on-accent"];
+  const mixHex = (a, b, t) => "#" + rgbOf(a).map((v, i) => ("0" + Math.round(v + (rgbOf(b)[i] - v) * t).toString(16)).slice(-2)).join("");
+  function applyPageColors(t, c) {
+    const root = document.documentElement.style;
+    let vars = null;
+    if (c) {
+      const light = lumOf(rgbOf(c.bg)) > 0.4;
+      if (t === "custom") { if (light) document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; }
+      vars = {
+        "--bg": c.bg, "--surface": c.box, "--surface-2": mixHex(c.box, c.text, 0.08), "--line": mixHex(c.box, c.text, 0.14),
+        "--text": c.text, "--muted": mixHex(mixHex(c.text, c.accent, 0.35), c.bg, 0.25), "--accent": c.accent,
+        "--accent-soft": rgba(c.accent, 0.14), "--var-text": mixHex(c.accent, c.text, 0.3), "--bar": rgba(c.bg, 0.84),
+        "--bar-line": rgba(mixHex(c.box, c.text, 0.14), 0.8), "--tabbar": rgba(c.box, 0.9), "--placeholder": mixHex(c.text, c.bg, 0.55),
+        "--focus": mixHex(c.accent, c.bg, 0.4), "--track": mixHex(c.box, c.text, 0.2), "--dot": mixHex(c.box, c.text, 0.3),
+        "--on-accent": lumOf(rgbOf(c.accent)) > 0.4 ? "#0b1020" : "#ffffff",
+      };
+      $("themeColor").content = c.bg;
+    }
+    PAGE_VARS.forEach((k) => { if (vars) root.setProperty(k, vars[k]); else root.removeProperty(k); });
+    try { if (vars) localStorage.setItem("clearway.colors", JSON.stringify(vars)); else localStorage.removeItem("clearway.colors"); } catch (e) {}
+  }
+  function pageColorsFor(st) {
+    const t = THEME_DEFAULTS[st.theme] ? st.theme : "dark";
+    const edited = t === "custom" || Object.keys(((st.theme_colors || {})[t]) || {}).length > 0 || !!teLocal[t];
+    applyPageColors(t, edited ? teColors(t) : null);
+  }
+  function teColors(t) {
+    const saved = ((state && state.settings.theme_colors) || {})[t] || {};
+    return Object.assign({}, THEME_DEFAULTS[t], saved, teLocal[t] || {});
+  }
+  function renderThemeEditor() {
+    const st = state.settings, t = THEME_DEFAULTS[st.theme] ? st.theme : "dark", c = teColors(t);
+    if (t !== teTheme) { teTheme = t; teLocal = {}; }
+    $("teName").textContent = THEME_NAMES[t];
+    $("teReset").textContent = `Reset ${THEME_NAMES[t]} to default`;
+    document.querySelectorAll("#te input[type=color]").forEach((i) => { if (document.activeElement !== i && i.value !== c[i.dataset.k]) i.value = c[i.dataset.k]; });
+    if (document.activeElement !== $("teAlpha")) $("teAlpha").value = Math.round(c.alpha * 100);
+    $("teAlphaV").textContent = Math.round(c.alpha * 100) + "%";
+    $("setMapCol").checked = !!st.map_colored;
+    $("teMap").classList.toggle("off", !st.map_colored);
+    // the preview: the card's glass over a bright and a dark scene, its box, faint text and the icon
+    const card = $("tePrev").querySelector(".te-card");
+    card.style.background = rgba(c.bg, c.alpha); card.style.color = c.text;
+    card.querySelector(".te-head b").style.color = c.text;
+    card.querySelector(".te-head i").style.background = c.accent;
+    const box = card.querySelector(".te-box"); box.style.background = rgba(c.box, 0.5); box.style.color = c.text;
+    card.querySelector(".te-mut").style.color = rgba(c.text, 0.7);
+    const ico = $("tePrev").querySelector(".te-ico"); ico.style.background = c.icon_bg; ico.style.borderColor = c.icon_fg; ico.querySelector("svg").style.fill = c.icon_fg;
+    // readability: text against the glass over a bright scene and a dark one, and inside a box (warning only)
+    const T = rgbOf(c.text), worst = Math.min(...[[232, 238, 245], [16, 22, 29]].map((scene) => {
+      const glass = over(rgbOf(c.bg), c.alpha, scene), boxed = over(rgbOf(c.box), 0.5, glass);
+      return Math.min(ratio(T, glass), ratio(T, boxed));
+    }));
+    $("teWarn").classList.toggle("hidden-block", worst >= 3);
+    pageColorsFor(st);                                   // this page follows the edits live
+  }
+  function teSet(k, v) {
+    const t = teTheme;
+    teLocal[t] = Object.assign({}, teLocal[t], { [k]: v });
+    renderThemeEditor();
+    clearTimeout(teTimer);
+    teTimer = setTimeout(() => { const send = teLocal[t]; act("settings", { theme_colors: { [t]: send } }); }, 350);
   }
 
   function renderSettings() {
     const s = state, st = s.settings;
     applyTheme(st.theme);
+    renderThemeEditor();
     const titles = { offline: "Offline", connecting: "Connecting…", online: "Connected", error: "Couldn't connect" };
     $("statusTitle").textContent = titles[s.status] + (s.status === "online" ? ` as ${s.callsign}` : "");
     let detail = s.error || "Enter your details below, then connect.";
@@ -453,6 +537,14 @@
   document.querySelectorAll("#setTheme button").forEach((b) => b.addEventListener("click", () => {
     applyTheme(b.dataset.theme); act("settings", { theme: b.dataset.theme });
   }));
+  document.querySelectorAll("#te input[type=color]").forEach((i) => i.addEventListener("input", () => teSet(i.dataset.k, i.value)));
+  $("teAlpha").addEventListener("input", (e) => teSet("alpha", +e.target.value / 100));
+  $("setMapCol").addEventListener("change", (e) => act("settings", { map_colored: e.target.checked }));
+  $("panelReset").addEventListener("click", () => act("panel_reset", {}, "Panel positions reset"));
+  $("teReset").addEventListener("click", () => {
+    const t = teTheme; delete teLocal[t]; clearTimeout(teTimer);
+    act("settings", { theme_colors: { [t]: null } }, `${THEME_NAMES[t]} reset`);
+  });
 
   $("copyTopic").onclick = async () => {
     try { await navigator.clipboard.writeText(state.settings.ntfy_topic); toast("Topic copied"); }

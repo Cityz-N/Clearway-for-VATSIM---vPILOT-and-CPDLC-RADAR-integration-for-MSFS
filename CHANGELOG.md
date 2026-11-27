@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.5.0
+
+- Themes: the MSFS panel's colours can be edited in Settings > Options > Panel colours: background, boxes, accent, text, icon background, icon symbol and transparency, with a live preview. Dark, Black and Light are each editable, with their own "Reset to default"; **Custom** is a fourth, free theme. A warning shows when the text may be hard to read (under 3:1 over a bright or dark scene)
+- Radar: **coloured map** (Settings > Options > Panel colours, off by default): the sea and land in the theme's colours, the place names a light tint of the land. Off, the grey map as before. Clearway recolours the map on the PC, so nothing changes in the sim
+- Radar: **range rings** around airports: up to 5, 1 to 1500 nm, any airport (ICAO, or the IATA / FAA codes VATSpy knows). Set them from the new ring button in the top right, or from an airport's card (its ring button; right-click it to remove that airport's rings). They're true great circles, kept by Clearway, so the panel, its radar window and the phone show the same rings
+- Radar: click an aircraft for a line to its **arrival airport**, with the distance left ("KJFK 1,240 nm"). Two at a time (yours and another, or two others); a third replaces the oldest, clicking an aircraft again removes its line. Your own line uses your SimBrief arrival when your VATSIM flight plan has none
+- Themes: edited and Custom colours also colour the Clearway page (settings on the PC, and the phone), and the radar's buttons, cards and menus in the panel
+- Themes: a theme with a light background (Custom or an edited one) gets the Light theme's badges, greens and active tab, so they stay readable; a Light theme edited dark gets the dark ones
+- Radar: the left buttons are small squares with symbols instead of text (+, −, my aircraft, labels, ATC, display size), so they take much less of the map. Hover the size button to see the current size
+- Radar: airport dots are twice as big. A newly opened airport card shows its controllers folded (callsign and frequency); click one for its details
+- Radar: the pilots / ATC / data-age readout became a small data icon: hover it to read it. It turns red when the data stops
+- Radar: Ramp controllers get their own purple "R" badge (they showed as Ground)
+- Radar: a pilot squawking 7700 gets a red ring and a bold red "7700" in its label, after the arrival airport (always labelled; with labels off, "7700" beside the ring)
+- MSFS panel: squawking 7700 turns the panel red (dark red card, red rims and accents, red icon, a "7700" tag by your callsign), over whichever theme is set, until you change the code
+- MSFS panel: a private message asking you to "contact me" pops up next to the icon by itself and stays until you click it (vPilot cyan); a SELCAL alert does the same in amber
+- MSFS panel: **quick reply** from the peek: a pen at the end of a vPilot message opens a reply box above Send. A private message is answered privately, frequency text on the frequency. Enter sends, Esc cancels
+- MSFS panel: the notepad can open in **its own window** (the new button in its corner), moved and resized like the radar window, open with the card closed, its place remembered
+- MSFS panel: in the card, the notepad has a corner grip that makes the card **bigger** (never smaller than normal). Leaving the notepad brings the card back to its normal size
+- MSFS panel: your **SimBrief flight** sits faintly under the notes, can't be erased: departure, arrival, the closest alternate and the cruise level, then the route with its SID and STAR (departure side teal, arrival side amber), with a reload button for a new flight plan
+- MSFS panel: **CPDLC requests redesigned.** A Request button in the CPDLC bar opens a request view in place of the messages (× goes back). The 8 request types are a compact 4 × 2 grid, each field shows its label inside the box, and Send is always at the bottom: the card grows a little for the longer forms (Clearance, Oceanic) instead of cutting them off, and keeps that size on every tab while the request view is open. The "not connected to Hoppie" notice is one short line
+- MSFS panel: the oceanic clearance request is laid out in three columns and adds destination (from your flight plan), max level, route and TMI; the optional ones are only sent when filled in
+- MSFS panel: the vPilot power button turns **yellow** while vPilot starts or closes (red closed, green open)
+- MSFS panel: the notes box no longer runs under the card's right edge
+- Settings: **Reset panel positions** brings the panel's icon back on screen (right side, half-way down) and puts the radar and notepad windows back in their default places, if they ended up out of view after a resolution or window change
+- Ultrawide downloads: `Clearway-for-VATSIM-21-9-wide-<version>.zip` (2560×1080, 3440×1440, 5120×2160) and `Clearway-for-VATSIM-32-9-wide-<version>.zip` (5120×1440, 7680×2160) let the panel use the whole width of the screen
+- Docs: radar and vPilot how-to images updated (data icon, range rings, the yellow power state)
+
 ## 1.4.0
 
 - MSFS panel: new ATC list in the vPilot tab. Controllers in two columns (callsign and frequency), sorted by type, with filter chips (All, ATIS, DEL, GND, TWR, APP, DEP, CTR, FSS): a chip only shows when that type is online. The distance in nm is gone
@@ -20,7 +47,9 @@
 - MSFS panel, Light theme: toned down (a soft grey-blue instead of near white)
 - MSFS panel: the mouse wheel scrolls smoothly, about two and a half lines a notch, instead of jumping by blocks
 - MSFS panel: a scrolled message list (vPilot chat, CPDLC) stays where you put it. Each time the card measured how tall to be, the list jumped back to the top
-- MSFS panel: opening the ATC list grows the card to show the list (up to its maximum height, then the list scrolls) and never shrinks it below the chat's height, so with few messages the controllers are no longer squeezed into a sliver
+- MSFS panel: opening the ATC list grows the card to show the list (up to its maximum height, then the list scrolls) and never shrinks it below the chat's height, so with few messages the controllers are no longer squeezed into a sliver. At least one whole controller card always shows, and the card has a base height (header, vPilot bar, chips, one row of controllers and the message box) instead of shrinking to almost nothing with an empty chat
+- MSFS panel: the grey status lines ("Connecting...", "Connected to Hoppie as ...") fade out 30 s after they arrive, so they no longer push real messages out of view
+- MSFS panel: a dice button under the SELCAL field of the vPilot connect form picks a random SELCAL that nobody on VATSIM is using
 
 ## 1.3.0
 

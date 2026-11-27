@@ -337,6 +337,7 @@ class SelcalMixin:
             "reg": str(g("aircraft", "reg") or ""),
             "generated": _time_ms(g("params", "time_generated")),
             "fetched": int(time.time() * 1000),
+            **_ofp_route(ofp),
         }
         self._vatsim_feed()
         with self.lock:
@@ -447,6 +448,55 @@ def _time_ms(value) -> int:
         return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000)
     except ValueError:
         return 0
+
+
+def _as_list(v):
+    return v if isinstance(v, list) else ([v] if isinstance(v, dict) else [])
+
+
+def _ofp_route(ofp: dict) -> dict:
+    """(1.5.0) What the notepad's flight block and the Chemtrail game need from a SimBrief OFP (json=v2):
+    alternate: the alternate closest to the destination (SimBrief gives one or a list, each with its distance);
+    cruise: the initial altitude in feet; route: the route text without DCT; sid / star: the procedure names, from
+    the navlog fixes flagged is_sid_star (the route text may leave them out); fixes: the navlog's waypoint names in
+    order, without TOC / TOD and airports (for the game)."""
+    out = {"alternate": "", "cruise": 0, "route": "", "sid": "", "star": "", "fixes": []}
+    try:
+        alts = [a for a in _as_list(ofp.get("alternate")) if isinstance(a, dict) and a.get("icao_code")]
+
+        def dist(a):
+            try:
+                return float(a.get("distance") or 1e9)
+            except (TypeError, ValueError):
+                return 1e9
+        if alts:
+            out["alternate"] = str(min(alts, key=dist)["icao_code"])
+        general = ofp.get("general") if isinstance(ofp.get("general"), dict) else {}
+        try:
+            out["cruise"] = int(float(general.get("initial_altitude") or 0))
+        except (TypeError, ValueError):
+            pass
+        out["route"] = " ".join(w for w in str(general.get("route") or "").split() if w.upper() != "DCT")
+        navlog = ofp.get("navlog") if isinstance(ofp.get("navlog"), dict) else {}
+        fixes = [f for f in _as_list(navlog.get("fix")) if isinstance(f, dict)]
+        procs = [f for f in fixes if str(f.get("is_sid_star")) == "1" and str(f.get("via_airway") or "").upper() not in ("", "DCT")]
+        sids = [f for f in procs if str(f.get("stage") or "").upper() == "CLB"]
+        stars = [f for f in procs if str(f.get("stage") or "").upper() == "DSC"]
+        if sids:
+            out["sid"] = str(sids[0]["via_airway"]).upper()
+        if stars:
+            out["star"] = str(stars[-1]["via_airway"]).upper()
+        names = []
+        for f in fixes:
+            ident = str(f.get("ident") or "").upper()
+            if not ident or ident in ("TOC", "TOD") or str(f.get("type") or "").lower() == "apt":
+                continue
+            if not names or names[-1] != ident:
+                names.append(ident)
+        out["fixes"] = names[:60]
+    except Exception as exc:                     # an odd OFP never breaks the SimBrief fetch
+        log.warning("SimBrief route not read: %s", exc)
+    return out
 
 
 def _dig(obj, *path):
