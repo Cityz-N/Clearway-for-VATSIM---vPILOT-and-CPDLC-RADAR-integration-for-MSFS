@@ -277,6 +277,9 @@
     var m = el("ringmenu");
     if (!ringMenuOpen) { m.className = "hidden"; if (selected && selected.kind === "airport") showCard(); return; }
     m.className = "";
+    // (1.5.1) just under the button, measured: the buttons follow the radar's Size setting, the menu's text doesn't
+    var bb = el("ringbtn").getBoundingClientRect(), rr = el("radar").getBoundingClientRect();
+    if (bb.height) m.style.top = Math.round((bb.bottom - rr.top) / (UI || 1) + 5) + "px";
     var h = "<div class='t'>Range rings <span>" + rings.length + " / 5</span></div>";
     for (var i = 0; i < rings.length; i++) {
       h += "<div class='r'><span class='dot'></span><span class='icao'>" + esc(rings[i].icao) + "</span>" +
@@ -1133,6 +1136,11 @@
     if (pick && pick.kind === "airport" && !same) {
       var apc = findAtcAirport(pick.key);
       for (var fi = 0; apc && fi < apc.c.length; fi++) foldedCtl[apc.c[fi].cs] = 1;
+    }
+    // (1.5.1) a sector's card too (it opened with the controller's full information, user test)
+    if (pick && pick.kind === "sector" && !same) {
+      var sec = findSector(pick.key);
+      if (sec) foldedCtl[sec.cs] = 1;
     }
     showCard();
     dirty = true;

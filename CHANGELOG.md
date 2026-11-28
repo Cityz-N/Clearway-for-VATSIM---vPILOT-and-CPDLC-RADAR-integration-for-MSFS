@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1
+
+- MSFS panel, peek: a long message shows in full and scrolls inside the peek (mouse wheel, or the bar on its right), with its answer buttons below it. It was cut off after 320 characters
+- MSFS panel, notepad window: a fold button in its title bar folds it down to the title bar, to keep it at hand without it taking room. Click again to unfold it, same size and place; remembered
+- Radar: a controller's card opened from its sector now starts folded (callsign and frequency), like an airport's controllers; click the line for the details
+- Radar: the buttons in the top right (data, range rings, bigger / smaller, own window) are the same small size as the ones on the left; the range rings menu opens just under its button
+
 ## 1.5.0
 
 - Themes: the MSFS panel's colours can be edited in Settings > Options > Panel colours: background, boxes, accent, text, icon background, icon symbol and transparency, with a live preview. Dark, Black and Light are each editable, with their own "Reset to default"; **Custom** is a fourth, free theme. A warning shows when the text may be hard to read (under 3:1 over a bright or dark scene)

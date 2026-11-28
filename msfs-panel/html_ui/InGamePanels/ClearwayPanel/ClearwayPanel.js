@@ -1731,8 +1731,7 @@
       : (m.tag || { cpdlc: "CPDLC", telex: "TELEX" }[m.kind] || "INFO");
     if (m.urgent === 1) label = "Contact me";
     closePeekReply(true);
-    var text = plain(m.text || "");
-    if (text.length > 320) text = text.slice(0, 317) + "...";
+    var text = plain(m.text || "");   // (1.5.1) the whole message: a long one scrolls inside the peek (it was cut at 320 characters)
     var foot = markedUnread ? "<div class=\"cw-peek-foot unread\">Marked as unread</div>" : "";
     var peekAnswers = isVp ? [] : (m.options && m.options.length ? m.options : (m.quick || []));
     if (peekAnswers.length) {                                  // answer straight from the peek
@@ -1756,6 +1755,10 @@
       "<div class=\"pr-box hidden\" id=\"cw-peek-reply\"></div>" + foot;
     peekMsg = m;
     peekUrgent = !!urgent;
+    // the previous peek's bar went with its content; a new one for this text (shown only when it's too long)
+    sbars = sbars.filter(function (s) { return !s.peek; });
+    var psb = addScrollbar(p.querySelector(".cw-peek-text"));
+    if (psb) psb.peek = true;
     placePeek();
     if (urgent) clearTimeout(peekTimer); else armPeekClose(PEEK_MS);
   }
@@ -1832,33 +1835,36 @@
   // Scrollbars: MSFS draws none for panel lists, so the mouse wheel was the only way to scroll. Each scrolling area
   // gets a thin bar on its right, laid over it in its parent: drag the thumb, or click the track to jump there.
   var sbars = [];
-  function setupScrollbars() {
-    ["cw-vp-chat", "cw-vp-atc", "cw-list", "cw-pane-selcal", "cw-notes-text"].forEach(function (id) {
-      var host = el(id);
-      if (!host || !host.parentNode) return;
-      var par = host.parentNode;
-      if (window.getComputedStyle(par).position === "static") par.style.position = "relative";
-      var bar = document.createElement("div"), thumb = document.createElement("div");
-      bar.className = "cw-sbar hidden"; thumb.className = "cw-sthumb";
-      bar.appendChild(thumb);
-      par.appendChild(bar);
-      var sb = { host: host, bar: bar, thumb: thumb, drag: null };
-      sbars.push(sb);
-      host.addEventListener("scroll", function () { updateScrollbar(sb); });
-      thumb.addEventListener("mousedown", function (e) {
-        if (e.button !== 0) return;
-        e.preventDefault(); e.stopPropagation();
-        sb.drag = { y: e.clientY, top: host.scrollTop };
-      });
-      bar.addEventListener("mousedown", function (e) {            // click on the track: jump there
-        if (e.button !== 0 || e.target === thumb) return;
-        e.preventDefault(); e.stopPropagation();
-        var r = bar.getBoundingClientRect(), th = thumb.offsetHeight;
-        var f = Math.max(0, Math.min(1, (e.clientY - r.top - th / 2) / Math.max(1, r.height - th)));
-        host.scrollTop = f * (host.scrollHeight - host.clientHeight);
-        sb.drag = { y: e.clientY, top: host.scrollTop };
-      });
+  // (1.5.1) one scrolling area's bar; also used for the peek's text, which is built again for every message
+  function addScrollbar(host) {
+    if (!host || !host.parentNode) return null;
+    var par = host.parentNode;
+    if (window.getComputedStyle(par).position === "static") par.style.position = "relative";
+    var bar = document.createElement("div"), thumb = document.createElement("div");
+    bar.className = "cw-sbar hidden"; thumb.className = "cw-sthumb";
+    bar.appendChild(thumb);
+    par.appendChild(bar);
+    var sb = { host: host, bar: bar, thumb: thumb, drag: null };
+    sbars.push(sb);
+    host.addEventListener("scroll", function () { updateScrollbar(sb); });
+    thumb.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      sb.drag = { y: e.clientY, top: host.scrollTop };
     });
+    bar.addEventListener("mousedown", function (e) {            // click on the track: jump there
+      if (e.button !== 0 || e.target === thumb) return;
+      e.preventDefault(); e.stopPropagation();
+      var r = bar.getBoundingClientRect(), th = thumb.offsetHeight;
+      var f = Math.max(0, Math.min(1, (e.clientY - r.top - th / 2) / Math.max(1, r.height - th)));
+      host.scrollTop = f * (host.scrollHeight - host.clientHeight);
+      sb.drag = { y: e.clientY, top: host.scrollTop };
+    });
+    updateScrollbar(sb);
+    return sb;
+  }
+  function setupScrollbars() {
+    ["cw-vp-chat", "cw-vp-atc", "cw-list", "cw-pane-selcal", "cw-notes-text"].forEach(function (id) { addScrollbar(el(id)); });
     document.addEventListener("mousemove", function (e) {
       for (var i = 0; i < sbars.length; i++) {
         var sb = sbars[i];
@@ -1930,6 +1936,7 @@
   }
 
   function onPeekClick(e) {
+    if (up(e.target, ".cw-sbar")) return;                            // (1.5.1) scrolling the text doesn't open the message
     if (el("cw-peek").classList.contains("tsat")) { hidePeek(); if (!expanded) setExpanded(true); return; }
     if (pick(e.target, "data-pen")) { if (peekReplyOpen) closePeekReply(); else openPeekReply(); return; }
     if (pick(e.target, "data-peek-send")) return sendPeekReply();
@@ -2132,7 +2139,18 @@
   function cgKey(k) {                                  // a key for the game (native or captured)
     if (!CG) return;
     var G = CG.G, d = CG_KEYS[k] || CG_KEYS[(k || "").toLowerCase()];
-    if (d && G.state === "playing" && !(d[0] === -G.dir[0] && d[1] === -G.dir[1])) G.next = d;
+    function same(a, b) { return a[0] === b[0] && a[1] === b[1]; }
+    function back(a, b) { return a[0] === -b[0] && a[1] === -b[1]; }
+    if (d && G.state === "playing") {
+      // (1.5.1) two quick presses (up, then right) both count: the first is the next move, the second waits for
+      // the move after (it overwrote the first, so turns felt late or got lost)
+      G.q = G.q || [];
+      if (same(G.next, G.dir)) { if (!back(d, G.dir) && !same(d, G.dir)) G.next = d; }
+      else {
+        var lastD = G.q.length ? G.q[G.q.length - 1] : G.next;
+        if (!back(d, lastD) && !same(d, lastD) && G.q.length < 2) G.q.push(d);
+      }
+    }
     if ((k === " " || k === "Spacebar") && G.state === "over") { CG.reset(); G.state = "playing"; G.last = 0; G.acc = 0; }
   }
   // the sim sends key events with an empty .key (1.5.0 test): fall back to the key code
@@ -2231,7 +2249,7 @@
     function key(x, y) { return x + "," + y; }
     function reset() {
       var cx = Math.floor(cols / 3), cy = Math.floor(rows / 2);
-      G.trail = [[cx, cy], [cx - 1, cy], [cx - 2, cy]]; G.dir = [1, 0]; G.next = [1, 0]; G.score = 0; G.speed = 2; G.leg = 0; G.gotWp = null; G.acc = 0; placeWp();
+      G.trail = [[cx, cy], [cx - 1, cy], [cx - 2, cy]]; G.dir = [1, 0]; G.next = [1, 0]; G.score = 0; G.speed = 2; G.leg = 0; G.gotWp = null; G.acc = 0; G.q = []; placeWp();
       G.time = 0; G.traffic = []; G.storms = []; G.nextTraffic = 8 + Math.random() * 8; G.nextStorm = 25 + Math.random() * 15; G.drain = 0;
     }
     function spawnTraffic() {
@@ -2360,6 +2378,11 @@
       var rate = stormRate(n);
       if (rate) { G.drain += rate / G.speed; while (G.drain >= 1) { G.drain -= 1; if (G.trail.length > 2) G.trail.pop(); } }
       else G.drain = 0;
+      // (1.5.1) a turn pressed while another was already waiting becomes the next move now
+      if (G.q && G.q.length) {
+        var nq = G.q.shift();
+        if (!(nq[0] === -G.dir[0] && nq[1] === -G.dir[1])) G.next = nq;
+      }
     }
     function plane(x, y, dir, col, sc) {
       ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dir[1], dir[0])); if (sc) ctx.scale(sc, sc);
@@ -2476,6 +2499,12 @@
         ctx.textAlign = "center"; ctx.fillStyle = C.text; ctx.font = F(1.35);
         ctx.fillText(msg, r.w / 2, oy + rows * cell / 2 - 10);
         ctx.fillStyle = C.muted; ctx.font = F(0.85, 600); ctx.fillText(sub, r.w / 2, oy + rows * cell / 2 + 12);
+        // (1.5.1) in the sim the arrows only reach the panel through Clearway's keyboard capture: without Clearway,
+        // MSFS keeps them (WASD still gets through), so say so instead of the arrows silently doing nothing
+        if (IN_SIM && !reachable) {
+          ctx.fillStyle = C.amber; ctx.font = F(0.78, 600);
+          ctx.fillText("Arrows need Clearway running; WASD works anyway", r.w / 2, oy + rows * cell / 2 + 12 + em * 1.25);
+        }
         ctx.textAlign = "left";
       }
     }
@@ -2486,6 +2515,9 @@
     var lastTick = 0;
     function tick() {
       if (CG !== me) return;
+      // (1.5.1) at most one picture per screen frame (~60 a second): the frame callback and the timer below both
+      // call this, and two pictures in one frame threw the delayed canvases out of step (jitter)
+      if (Date.now() - lastTick < 12) return;
       lastTick = Date.now();
       // the clock: the sim's frame timestamp only moved while the mouse was dragging (1.5.0 test), so use our own
       var t = (window.performance && performance.now) ? performance.now() : Date.now();
@@ -2507,10 +2539,14 @@
       present();                                           // a new picture every frame (see the canvases above)
     }
     function loop() { if (CG !== me) return; tick(); window.requestAnimationFrame(loop); }
+    // (1.5.1) the sim calls frames rarely while the mouse is still, so this timer really drives the game there. It
+    // was every 40 ms and only after 60 ms without a frame: about 12 pictures a second, jerky, and with the canvases
+    // shown 3 pictures late, a quarter of a second before a turn showed (1.5.0 test: input delay, jitter). Now a
+    // steady ~60 a second; tick() skips it when a frame callback just drew.
     var backup = setInterval(function () {
       if (CG !== me) { clearInterval(backup); return; }
-      if (Date.now() - lastTick > 60) tick();
-    }, 40);
+      tick();
+    }, 16);
     cv.addEventListener("keydown", function (e) {
       if (e.key === "Escape" || e.keyCode === 27) { cgPause(); cgHoldKeys(false); e.stopPropagation(); return; }
       cgKey(cgKeyOf(e)); e.preventDefault(); e.stopPropagation();
@@ -2576,8 +2612,21 @@
     w.style.left = x + "px"; w.style.top = y + "px"; w.style.width = ww + "px"; w.style.height = wh + "px";
   }
   function saveNotesWindow() {
-    var w = el("cw-notes-win"), sw = window.innerWidth || 1, sh = window.innerHeight || 1;
-    save("CLEARWAY_NOTES_WIN", { x: w.offsetLeft / sw, y: w.offsetTop / sh, w: w.offsetWidth / sw, h: w.offsetHeight / sh });
+    var w = el("cw-notes-win"), sw = window.innerWidth || 1, sh = window.innerHeight || 1, prev = load("CLEARWAY_NOTES_WIN", null);
+    // folded, the window is only its title bar: keep the unfolded height
+    var h = notesFolded && prev && prev.h ? prev.h : w.offsetHeight / sh;
+    save("CLEARWAY_NOTES_WIN", { x: w.offsetLeft / sw, y: w.offsetTop / sh, w: w.offsetWidth / sw, h: h });
+  }
+  // (1.5.1) the notepad window folded to its title bar (to keep it at hand without it taking room), remembered
+  var notesFolded = false;
+  function setNotesFolded(on) {
+    notesFolded = !!on;
+    save("CLEARWAY_NOTES_FOLDED", notesFolded);
+    el("cw-notes-win").classList.toggle("folded", notesFolded);
+    var b = el("cw-nw-fold");
+    b.title = notesFolded ? "Unfold the notepad" : "Fold the notepad to its title bar";
+    b.innerHTML = "<svg viewBox=\"0 0 24 24\"><path d=\"" + (notesFolded ? "M6 9l6 6 6-6" : "M6 15l6-6 6 6") + "\"/></svg>";
+    if (notesFolded && CG) cgPause();                   // a game in the notepad waits while it's folded
   }
   // the card's grip: only with the notepad open in the card, not while playing. It sits in the card's corner away from
   // the icon (the card grows away from it), so dragging it outwards always makes the card bigger
@@ -2597,7 +2646,11 @@
     var w = el("cw-notes-win");
     makeWindowDraggable(el("cw-nw-head"), w, saveNotesWindow);
     makeWindowResizable(el("cw-nw-grip"), w, saveNotesWindow, [14, 9]);
-    el("cw-nw-dock").addEventListener("click", function () { setNotesDetached(false); });
+    el("cw-nw-dock").addEventListener("click", function () { setNotesFolded(false); setNotesDetached(false); });
+    el("cw-nw-fold").addEventListener("click", function (e) { e.stopPropagation(); setNotesFolded(!notesFolded); });
+    // (the title bar drags the window: a press on the fold button mustn't start a drag)
+    el("cw-nw-fold").addEventListener("mousedown", function (e) { e.stopPropagation(); });
+    setNotesFolded(!!load("CLEARWAY_NOTES_FOLDED", false));
     el("cw-notes-back").addEventListener("click", function () { setNotesDetached(false); });
     el("cw-notes-detach").addEventListener("click", function () { setNotesDetached(true); });
     swallowWheel(w);

@@ -541,7 +541,9 @@ textarea.cw-input { resize: none; overflow-y: hidden; line-height: 1.35em; min-h
 .cw-peek-head .cw-station { flex-grow: 1; margin-left: 0.5em; }
 .cw-peek-kind { font-weight: bold; font-size: 0.85em; padding: 0.1em 0.5em; border-radius: 0.7em; background-color: var(--amber-soft); color: var(--cp); }
 #cw-peek.vp .cw-peek-kind { background-color: var(--vp-soft); color: var(--vp); }
-.cw-peek-text { margin-top: 0.4em; line-height: 1.35em; max-height: 9.5em; overflow: hidden; word-wrap: break-word; }
+/* (1.5.1) a long message scrolls (mouse wheel, or the panel's own bar on the right) instead of being cut off */
+.cw-peek-text { margin-top: 0.4em; line-height: 1.35em; max-height: 9.5em; overflow-x: hidden; overflow-y: auto; word-wrap: break-word; padding-right: 0.5em; }
+#cw-peek ::-webkit-scrollbar { width: 0; height: 0; }
 .cw-peek-text.mono { font-family: "Selawik", "Consolas", monospace; }
 .cw-peek-foot { margin-top: 0.45em; font-size: 0.85em; color: var(--muted); }
 .cw-peek-foot.unread { color: var(--amber); }
@@ -736,6 +738,9 @@ textarea.cw-input { resize: none; overflow-y: hidden; line-height: 1.35em; min-h
   background: linear-gradient(135deg, transparent 50%, rgba(143, 211, 255, 0.55) 50%, rgba(143, 211, 255, 0.55) 60%, transparent 60%,
               transparent 70%, rgba(143, 211, 255, 0.55) 70%, rgba(143, 211, 255, 0.55) 80%, transparent 80%);
 }
+/* (1.5.1) folded: only the title bar shows; the window's size is kept for when it unfolds */
+#cw-notes-win.folded { height: 2.3em !important; min-height: 0; }
+#cw-notes-win.folded #cw-nw-body, #cw-notes-win.folded #cw-nw-grip { display: none; }
 #cw-notes-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; position: relative; }
 /* Chemtrail (the notepad's hidden game): a faint cloud in the notes box's corner, the canvas in the box's place */
 #cg-cloud { position: absolute; right: 0.4em; bottom: 0.4em; width: 1.25em; height: 1.25em; cursor: pointer; opacity: 0.38; z-index: 3; }
